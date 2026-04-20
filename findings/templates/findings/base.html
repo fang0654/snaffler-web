@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>{% block title %}Snaffler{% endblock %}</title>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --panel: #1a2332;
+      --text: #e6edf3;
+      --muted: #8b949e;
+      --accent: #58a6ff;
+      --border: #30363d;
+      --green: #3fb950;
+      --yellow: #d29922;
+      --red: #f85149;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.45;
+    }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    header {
+      padding: 1rem 1.25rem;
+      border-bottom: 1px solid var(--border);
+      background: var(--panel);
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+    header h1 {
+      margin: 0;
+      font-size: 1.15rem;
+      font-weight: 600;
+    }
+    header nav { margin-left: auto; }
+    header nav a { margin-left: 0.75rem; }
+    main { padding: 1rem 1.25rem 2rem; }
+    .muted { color: var(--muted); font-size: 0.9rem; }
+    .error {
+      background: rgba(248, 81, 73, 0.12);
+      border: 1px solid var(--red);
+      color: #f0b4b0;
+      padding: 0.65rem 0.85rem;
+      border-radius: 6px;
+      margin-bottom: 1rem;
+    }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem 1.25rem;
+      margin-bottom: 1rem;
+    }
+    label { display: block; font-size: 0.8rem; color: var(--muted); margin-bottom: 0.25rem; }
+    input[type="file"], select, input[type="search"], input[type="number"] {
+      background: #111822;
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.45rem 0.55rem;
+      font-size: 0.9rem;
+    }
+    button, .btn {
+      display: inline-block;
+      background: var(--accent);
+      color: #0d1117;
+      border: none;
+      border-radius: 6px;
+      padding: 0.5rem 1rem;
+      font-weight: 600;
+      font-size: 0.9rem;
+      cursor: pointer;
+    }
+    button:hover, .btn:hover { filter: brightness(1.08); }
+    table.data {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.85rem;
+    }
+    table.data thead th {
+      text-align: left;
+      padding: 0.55rem 0.65rem;
+      border-bottom: 1px solid var(--border);
+      background: #151d2a;
+      white-space: nowrap;
+    }
+    table.data tbody td {
+      padding: 0.45rem 0.65rem;
+      border-bottom: 1px solid #222c3a;
+      vertical-align: top;
+      word-break: break-word;
+    }
+    table.data tbody tr:nth-child(even) td { background: rgba(255,255,255,0.02); }
+    .dt { white-space: nowrap; color: var(--muted); font-variant-numeric: tabular-nums; }
+    .kind { font-weight: 600; }
+    .sev-Green { color: var(--green); }
+    .sev-Yellow { color: var(--yellow); }
+    .sev-Red { color: var(--red); }
+    .sev-empty { color: var(--muted); }
+    .finding {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.8rem;
+      max-width: 56rem;
+    }
+    .uris {
+      max-width: 22rem;
+      font-size: 0.78rem;
+      word-break: break-all;
+    }
+    .uri-line { margin-bottom: 0.25rem; }
+    .uri-line:last-child { margin-bottom: 0; }
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      align-items: flex-end;
+      margin-bottom: 1rem;
+    }
+    .toolbar .field { display: flex; flex-direction: column; gap: 0.2rem; }
+    .pagination { margin-top: 1rem; display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+    .pagination .muted { margin-left: auto; }
+    th.sort a { color: inherit; }
+    th.sort .arrow { color: var(--accent); margin-left: 0.25rem; }
+  </style>
+  {% block extra_css %}{% endblock %}
+</head>
+<body>
+  <header>
+    <h1><a href="{% url 'findings:home' %}">Snaffler</a></h1>
+    <span class="muted">Browse Snaffler logs</span>
+    <nav>
+      <a href="{% url 'findings:home' %}">Imports</a>
+      <a href="{% url 'findings:smb_credentials' %}">SMB login</a>
+      <a href="/admin/">Admin</a>
+    </nav>
+  </header>
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+  {% block extra_js %}{% endblock %}
+</body>
+</html>

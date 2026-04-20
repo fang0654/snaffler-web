@@ -1,0 +1,49 @@
+{% extends "findings/base.html" %}
+
+{% block title %}Imports — Snaffler{% endblock %}
+
+{% block content %}
+<div class="card">
+  <h2 style="margin-top:0;">Import log</h2>
+  <p class="muted">Upload a Snaffler text log. Rows are parsed and stored in the database.</p>
+  {% if error %}
+    <div class="error">{{ error }}</div>
+  {% endif %}
+  <form method="post" enctype="multipart/form-data" style="margin-top:0.75rem;">
+    {% csrf_token %}
+    <label for="file">File</label>
+    <input id="file" name="file" type="file" required/>
+    <div style="margin-top:0.75rem;">
+      <button type="submit">Import</button>
+    </div>
+  </form>
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0;">Imported files</h2>
+  {% if sources %}
+    <table class="data">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Rows</th>
+          <th>Imported</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for s in sources %}
+          <tr>
+            <td>{{ s.original_name }}</td>
+            <td>{{ s.row_count }}</td>
+            <td class="dt">{{ s.imported_at }} UTC</td>
+            <td><a href="{% url 'findings:source_detail' s.pk %}">Open</a></td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p class="muted">No imports yet.</p>
+  {% endif %}
+</div>
+{% endblock %}

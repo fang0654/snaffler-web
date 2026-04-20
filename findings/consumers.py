@@ -1,0 +1,224 @@
+from __future__ import annotations
+
+import asyncio
+import os
+import shlex
+import shutil
+import sys
+from urllib.parse import parse_qs
+
+from asgiref.sync import sync_to_async
+from channels.generic.websocket import AsyncWebsocketConsumer
+from django.conf import settings
+
+try:
+    import pty
+
+    HAS_PTY = True
+except ImportError:
+    HAS_PTY = False
+
+
+def _build_smbclient_cmd(domain: str, username: str, password: str, host: str) -> list[str]:
+    if domain:
+        target = f"{domain}/{username}:{password}@{host}"
+    else:
+        target = f"{username}:{password}@{host}"
+    exe = str(getattr(settings, "SMBCLIENT_PY", "smbclient.py"))
+    if not os.path.isabs(exe):
+        found = shutil.which(os.path.basename(exe)) or shutil.which(exe)
+        if found:
+            exe = found
+    if exe.endswith(".py"):
+        py = shutil.which("python3") or shutil.which("python") or sys.executable
+        return [py, exe, target]
+    return [exe, target]
+
+
+def _format_smbclient_command_display(
+    cmd: list[str], domain: str, username: str, host: str
+) -> str:
+    """Shell-style line for logging; password replaced with ***."""
+    if domain:
+        masked_target = f"{domain}/{username}:***@{host}"
+    else:
+        masked_target = f"{username}:***@{host}"
+    if len(cmd) == 3:
+        parts = [cmd[0], cmd[1], masked_target]
+    else:
+        parts = [cmd[0], masked_target]
+    return " ".join(shlex.quote(p) for p in parts)
+
+
+def _write_all_fd(fd: int, data: bytes) -> None:
+    while data:
+        n = os.write(fd, data)
+        data = data[n:]
+
+
+class SMBTerminalConsumer(AsyncWebsocketConsumer):
+    proc: asyncio.subprocess.Process | None = None
+    pump_task: asyncio.Task | None = None
+    # PTY master (Unix): read/write here; proc.stdin is None. PIPE mode: use proc.stdin.
+    master_fd: int | None = None
+
+    async def connect(self) -> None:
+        session = self.scope.get("session")
+        if session is None:
+            await self.close(code=4000)
+            return
+
+        @sync_to_async
+        def _creds() -> tuple[str, str, str]:
+            return (
+                session.get("smb_domain", "") or "",
+                session.get("smb_username", "") or "",
+                session.get("smb_password", "") or "",
+            )
+
+        domain, username, password = await _creds()
+        if not username or not password:
+            await self.close(code=4001)
+            return
+
+        qs = parse_qs(self.scope.get("query_string", b"").decode())
+        host = (qs.get("host") or [""])[0].strip()
+        share = (qs.get("share") or [""])[0].strip()
+        cd_path = (qs.get("cd") or [""])[0].strip()
+        if not host or not share:
+            await self.close(code=4002)
+            return
+
+        await self.accept()
+
+        cmd = _build_smbclient_cmd(domain, username, password, host)
+        display = _format_smbclient_command_display(cmd, domain, username, host)
+        await self.send(text_data=f"$ {display}\r\n")
+
+        use_pty = HAS_PTY and hasattr(os, "fork")
+        slave_fd: int | None = None
+        try:
+            if use_pty:
+                self.master_fd, slave_fd = pty.openpty()
+                self.proc = await asyncio.create_subprocess_exec(
+                    *cmd,
+                    stdin=slave_fd,
+                    stdout=slave_fd,
+                    stderr=slave_fd,
+                    close_fds=True,
+                    env={**os.environ, "PYTHONUNBUFFERED": "1"},
+                )
+                assert slave_fd is not None
+                os.close(slave_fd)
+                slave_fd = None
+            else:
+                self.proc = await asyncio.create_subprocess_exec(
+                    *cmd,
+                    stdin=asyncio.subprocess.PIPE,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.STDOUT,
+                    env={**os.environ, "PYTHONUNBUFFERED": "1"},
+                )
+        except OSError as e:
+            if self.master_fd is not None:
+                try:
+                    os.close(self.master_fd)
+                except OSError:
+                    pass
+                self.master_fd = None
+            await self.send(text_data=f"\r\n[spawn error] {e}\r\n")
+            await self.close(code=4003)
+            return
+
+        self.pump_task = asyncio.create_task(self._pump_output())
+
+        cd_backslash = cd_path.replace("/", chr(92)) if cd_path else ""
+
+        await self.send(text_data="$ shares\r\n")
+        await self.send(text_data=f"$ use {shlex.quote(share)}\r\n")
+        if cd_path:
+            await self.send(text_data=f"$ cd {shlex.quote(cd_backslash)}\r\n")
+
+        init = "shares\n"
+        init += f"use {share}\n"
+        if cd_path:
+            init += f"cd {cd_backslash}\n"
+        await self._write_input(init.encode())
+
+    async def _write_input(self, data: bytes) -> None:
+        if not data:
+            return
+        if self.master_fd is not None:
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(None, _write_all_fd, self.master_fd, data)
+        elif self.proc is not None and self.proc.stdin is not None:
+            self.proc.stdin.write(data)
+            await self.proc.stdin.drain()
+
+    async def _pump_output(self) -> None:
+        loop = asyncio.get_event_loop()
+        if self.master_fd is not None:
+            fd = self.master_fd
+
+            def _read_chunk() -> bytes:
+                return os.read(fd, 4096)
+
+            while True:
+                try:
+                    chunk = await loop.run_in_executor(None, _read_chunk)
+                except OSError:
+                    break
+                if not chunk:
+                    break
+                await self.send(bytes_data=chunk)
+            return
+
+        assert self.proc is not None
+        assert self.proc.stdout is not None
+        try:
+            while True:
+                chunk = await self.proc.stdout.read(4096)
+                if not chunk:
+                    break
+                await self.send(bytes_data=chunk)
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            await self.send(text_data=f"\r\n[read error] {e}\r\n")
+
+    async def receive(self, text_data=None, bytes_data=None) -> None:
+        if bytes_data is not None:
+            data = bytes_data
+        elif text_data is not None:
+            data = text_data.encode("utf-8")
+        else:
+            return
+        if not data:
+            return
+        if self.master_fd is None and (
+            self.proc is None or self.proc.stdin is None
+        ):
+            return
+        try:
+            await self._write_input(data)
+        except BrokenPipeError:
+            pass
+        except OSError:
+            pass
+
+    async def disconnect(self, close_code: int) -> None:
+        if self.pump_task:
+            self.pump_task.cancel()
+            try:
+                await self.pump_task
+            except asyncio.CancelledError:
+                pass
+        if self.master_fd is not None:
+            try:
+                os.close(self.master_fd)
+            except OSError:
+                pass
+            self.master_fd = None
+        if self.proc and self.proc.returncode is None:
+            self.proc.kill()
+            await self.proc.wait()

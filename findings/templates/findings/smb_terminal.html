@@ -1,0 +1,66 @@
+{% extends "findings/base.html" %}
+
+{% block title %}SMB terminal — Snaffler{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.min.css" crossorigin="anonymous"/>
+{% endblock %}
+
+{% block content %}
+<p class="muted"><a href="{% url 'findings:home' %}">← Imports</a></p>
+<h2 style="margin-top:0;">SMB terminal</h2>
+<p class="muted">Target: <code>{{ host }}</code> · share <code>{{ share }}</code>{% if cd %} · cd <code>{{ cd }}</code>{% endif %}</p>
+
+{% if not has_creds %}
+  <div class="error" style="max-width:40rem;">Set domain, username, and password first.
+    <a href="{% url 'findings:smb_credentials' %}?next={{ request.get_full_path|urlencode }}">SMB login</a>
+  </div>
+{% elif not host or not share %}
+  <div class="error" style="max-width:40rem;">Missing host or share. Open this page from a <code>file://</code> URI link.</div>
+{% else %}
+  {{ ws_params|json_script:"ws-params" }}
+  <div id="terminal" tabindex="0" style="height: min(70vh, 640px); width: 100%; max-width: 100%; outline: none;"></div>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+{% if has_creds and host and share %}
+<script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js" crossorigin="anonymous"></script>
+<script>
+(function () {
+  const params = JSON.parse(document.getElementById('ws-params').textContent);
+  const wsProto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const q = new URLSearchParams({ host: params.host, share: params.share, cd: params.cd || '' });
+  const ws = new WebSocket(wsProto + '//' + location.host + '/ws/smb/?' + q.toString());
+  ws.binaryType = 'arraybuffer';
+
+  const term = new Terminal({ convertEol: true, fontFamily: 'ui-monospace, Menlo, monospace' });
+  const el = document.getElementById('terminal');
+  term.open(el);
+  term.focus();
+  el.addEventListener('click', function () { term.focus(); });
+
+  ws.onopen = function () {
+    term.focus();
+  };
+
+  ws.onmessage = function (ev) {
+    if (ev.data instanceof ArrayBuffer) {
+      term.write(new Uint8Array(ev.data));
+    } else {
+      term.write(ev.data);
+    }
+  };
+  ws.onerror = function () { term.writeln('\r\n[websocket error]'); };
+  ws.onclose = function (ev) {
+    term.writeln('\r\n[closed ' + (ev.code || '') + ']');
+  };
+  term.onData(function (data) {
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.send(data);
+    }
+  });
+})();
+</script>
+{% endif %}
+{% endblock %}

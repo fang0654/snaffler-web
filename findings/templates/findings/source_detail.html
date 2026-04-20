@@ -1,0 +1,219 @@
+{% extends "findings/base.html" %}
+{% load findings_extras %}
+
+{% block title %}{{ source.original_name }} — Snaffler{% endblock %}
+
+{% block extra_css %}
+<style>
+  .filter-row-2 {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    align-items: flex-end;
+    margin-top: 0.75rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--border);
+  }
+  .filter-row-2 .field.multiselect-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    flex: 1 1 12rem;
+    max-width: 22rem;
+  }
+  .filter-row-2 select[multiple] {
+    min-height: 7.5rem;
+    width: 100%;
+    padding: 0.35rem;
+  }
+  .multiselect-actions {
+    display: flex;
+    gap: 0.35rem;
+    margin-top: 0.25rem;
+  }
+  .multiselect-actions button {
+    padding: 0.35rem 0.65rem;
+    font-size: 0.8rem;
+    font-weight: 600;
+    background: #212a38;
+    color: var(--text);
+    border: 1px solid var(--border);
+  }
+  .multiselect-actions button:hover { filter: brightness(1.12); }
+</style>
+{% endblock %}
+
+{% block content %}
+<p class="muted"><a href="{% url 'findings:home' %}">← Imports</a></p>
+<h2 style="margin-top:0;">{{ source.original_name }}</h2>
+<p class="muted">{{ source.row_count }} rows · prefix <code style="font-size:0.85em;">{{ source.user_prefix|truncatechars:80 }}</code></p>
+
+<form method="get" class="card" style="margin-bottom:1rem;">
+  <input type="hidden" name="sort" value="{{ sort }}"/>
+  <input type="hidden" name="order" value="{{ order }}"/>
+  <div class="toolbar">
+    <div class="field">
+      <label for="kind">Type</label>
+      <select id="kind" name="kind">
+        <option value="">(all)</option>
+        {% for k in kinds %}
+          <option value="{{ k }}" {% if k == filter_kind %}selected{% endif %}>{{ k }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <label for="severity">Severity</label>
+      <select id="severity" name="severity">
+        <option value="">(all)</option>
+        {% for s in severities %}
+          <option value="{{ s }}" {% if s == filter_severity %}selected{% endif %}>{{ s }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="field" style="flex:1 1 14rem; max-width:24rem;">
+      <label for="q">Search finding</label>
+      <input id="q" name="q" type="search" value="{{ filter_q }}" placeholder="Substring…" autocomplete="off"/>
+    </div>
+    <div class="field" style="flex:1 1 12rem; max-width:20rem;">
+      <label for="uri_q">Search URI</label>
+      <input id="uri_q" name="uri_q" type="search" value="{{ filter_uri_q }}" placeholder="In extracted URIs…" autocomplete="off"/>
+    </div>
+    <div class="field">
+      <label for="per_page">Per page</label>
+      <select id="per_page" name="per_page">
+        <option value="25" {% if per_page == 25 %}selected{% endif %}>25</option>
+        <option value="50" {% if per_page == 50 %}selected{% endif %}>50</option>
+        <option value="100" {% if per_page == 100 %}selected{% endif %}>100</option>
+        <option value="200" {% if per_page == 200 %}selected{% endif %}>200</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>&nbsp;</label>
+      <button type="submit">Apply</button>
+    </div>
+  </div>
+  <div class="filter-row-2">
+    <div class="field multiselect-field">
+      <label for="plugins">Plugins</label>
+      <select id="plugins" name="plugins" multiple size="6">
+        {% for opt in plugin_options %}
+          <option value="{{ opt.value }}" {% if opt.value in selected_plugins %}selected{% endif %}>{{ opt.label }}</option>
+        {% endfor %}
+      </select>
+      <div class="multiselect-actions">
+        <button type="button" id="plugins-all" class="btn-ms">Select all</button>
+        <button type="button" id="plugins-none" class="btn-ms">Deselect all</button>
+      </div>
+    </div>
+    <div class="field multiselect-field">
+      <label for="hosts">Hosts</label>
+      <select id="hosts" name="hosts" multiple size="6">
+        {% for opt in host_options %}
+          <option value="{{ opt.value }}" {% if opt.value in selected_hosts %}selected{% endif %}>{{ opt.label }}</option>
+        {% endfor %}
+      </select>
+      <div class="multiselect-actions">
+        <button type="button" id="hosts-all" class="btn-ms">Select all</button>
+        <button type="button" id="hosts-none" class="btn-ms">Deselect all</button>
+      </div>
+    </div>
+  </div>
+</form>
+
+<div style="overflow:auto; max-height: calc(100vh - 18rem); border: 1px solid var(--border); border-radius: 8px;">
+  <table class="data">
+    <thead>
+      <tr>
+        <th class="sort">
+          <a href="?{% sort_query request 'occurred_at' %}">Datetime{% if sort == 'occurred_at' %}<span class="arrow">{% if order == 'desc' %}↓{% else %}↑{% endif %}</span>{% endif %}</a>
+        </th>
+        <th class="sort">
+          <a href="?{% sort_query request 'kind' %}">Type{% if sort == 'kind' %}<span class="arrow">{% if order == 'desc' %}↓{% else %}↑{% endif %}</span>{% endif %}</a>
+        </th>
+        <th class="sort">
+          <a href="?{% sort_query request 'severity' %}">Severity{% if sort == 'severity' %}<span class="arrow">{% if order == 'desc' %}↓{% else %}↑{% endif %}</span>{% endif %}</a>
+        </th>
+        <th class="sort">
+          <a href="?{% sort_query request 'plugin_name' %}">Plugin{% if sort == 'plugin_name' %}<span class="arrow">{% if order == 'desc' %}↓{% else %}↑{% endif %}</span>{% endif %}</a>
+        </th>
+        <th class="sort">
+          <a href="?{% sort_query request 'smb_host' %}">Host{% if sort == 'smb_host' %}<span class="arrow">{% if order == 'desc' %}↓{% else %}↑{% endif %}</span>{% endif %}</a>
+        </th>
+        <th>Share</th>
+        <th>URIs</th>
+        <th class="sort">
+          <a href="?{% sort_query request 'finding' %}">Finding{% if sort == 'finding' %}<span class="arrow">{% if order == 'desc' %}↓{% else %}↑{% endif %}</span>{% endif %}</a>
+        </th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in page_obj %}
+        <tr>
+          <td class="dt">{{ row.occurred_at|date:"Y-m-d H:i:s" }}Z</td>
+          <td class="kind">{{ row.kind }}</td>
+          <td class="{% if row.severity %}sev-{{ row.severity }}{% else %}sev-empty{% endif %}">{% if row.severity %}{{ row.severity }}{% else %}—{% endif %}</td>
+          <td class="kind">{% if row.plugin_name %}{{ row.plugin_name }}{% else %}—{% endif %}</td>
+          <td class="dt">{% if row.smb_host %}{{ row.smb_host }}{% else %}—{% endif %}</td>
+          <td>{% if row.smb_share %}{{ row.smb_share }}{% else %}—{% endif %}</td>
+          <td class="uris">
+            {% if row.uris %}
+              {% for u in row.uris %}
+                <div class="uri-line">
+                  {% if u|slice:":7" == "file://" %}
+                    <a href="{% url 'findings:smb_terminal' %}?uri={{ u|urlencode }}">{{ u }}</a>
+                  {% else %}
+                    <a href="{{ u }}" rel="noopener noreferrer">{{ u }}</a>
+                  {% endif %}
+                </div>
+              {% endfor %}
+            {% else %}
+              <span class="muted">—</span>
+            {% endif %}
+          </td>
+          <td class="finding">{{ row.finding }}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="8" class="muted">No rows match.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="pagination">
+  {% if page_obj.has_previous %}
+    {% if filter_query %}
+      <a href="?{{ filter_query }}&page={{ page_obj.previous_page_number }}">← Previous</a>
+    {% else %}
+      <a href="?page={{ page_obj.previous_page_number }}">← Previous</a>
+    {% endif %}
+  {% endif %}
+  <span>Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span>
+  {% if page_obj.has_next %}
+    {% if filter_query %}
+      <a href="?{{ filter_query }}&page={{ page_obj.next_page_number }}">Next →</a>
+    {% else %}
+      <a href="?page={{ page_obj.next_page_number }}">Next →</a>
+    {% endif %}
+  {% endif %}
+  <span class="muted">{{ page_obj.paginator.count }} total (filtered)</span>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+  function wire(selectId, allId, noneId) {
+    var sel = document.getElementById(selectId);
+    if (!sel) return;
+    document.getElementById(allId).addEventListener("click", function () {
+      for (var i = 0; i < sel.options.length; i++) sel.options[i].selected = true;
+    });
+    document.getElementById(noneId).addEventListener("click", function () {
+      for (var i = 0; i < sel.options.length; i++) sel.options[i].selected = false;
+    });
+  }
+  wire("plugins", "plugins-all", "plugins-none");
+  wire("hosts", "hosts-all", "hosts-none");
+})();
+</script>
+{% endblock %}
