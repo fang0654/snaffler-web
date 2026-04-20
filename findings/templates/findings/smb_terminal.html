@@ -26,6 +26,7 @@
 {% block extra_js %}
 {% if has_creds and host and share %}
 <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.min.js" crossorigin="anonymous"></script>
 <script>
 (function () {
   const params = JSON.parse(document.getElementById('ws-params').textContent);
@@ -36,11 +37,31 @@
 
   const term = new Terminal({ convertEol: true, fontFamily: 'ui-monospace, Menlo, monospace' });
   const el = document.getElementById('terminal');
+  const fitAddon = new FitAddon.FitAddon();
+  term.loadAddon(fitAddon);
   term.open(el);
+
+  function fit() {
+    try {
+      fitAddon.fit();
+    } catch (e) {}
+  }
+  requestAnimationFrame(function () {
+    requestAnimationFrame(fit);
+  });
+  window.addEventListener('resize', fit);
+  if (typeof ResizeObserver !== 'undefined') {
+    var ro = new ResizeObserver(function () {
+      requestAnimationFrame(fit);
+    });
+    ro.observe(el);
+  }
+
   term.focus();
   el.addEventListener('click', function () { term.focus(); });
 
   ws.onopen = function () {
+    fit();
     term.focus();
   };
 
