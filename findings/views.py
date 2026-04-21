@@ -88,21 +88,27 @@ def source_detail(request: HttpRequest, pk: int):
     selected_hosts = request.GET.getlist("hosts")
     qs = _apply_multiselect_in(qs, "smb_host", selected_hosts)
 
-    sort = request.GET.get("sort", "occurred_at")
-    order = request.GET.get("order", "desc")
+    sort = request.GET.get("sort", "smb_host")
+    order = request.GET.get("order", "asc")
     allowed = {
         "occurred_at",
         "kind",
         "severity",
         "plugin_name",
         "smb_host",
+        "smb_share",
         "finding",
     }
     if sort not in allowed:
-        sort = "occurred_at"
+        sort = "smb_host"
     desc = order != "asc"
     prefix = "-" if desc else ""
-    qs = qs.order_by(f"{prefix}{sort}")
+    if sort == "smb_host":
+        qs = qs.order_by(f"{prefix}smb_host", f"{prefix}smb_share", f"{prefix}occurred_at")
+    elif sort == "smb_share":
+        qs = qs.order_by(f"{prefix}smb_share", f"{prefix}smb_host", f"{prefix}occurred_at")
+    else:
+        qs = qs.order_by(f"{prefix}{sort}")
 
     try:
         per_page = int(request.GET.get("per_page", "50"))

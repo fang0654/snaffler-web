@@ -139,7 +139,9 @@
         <th class="sort">
           <a href="?{% sort_query request 'smb_host' %}">Host{% if sort == 'smb_host' %}<span class="arrow">{% if order == 'desc' %}↓{% else %}↑{% endif %}</span>{% endif %}</a>
         </th>
-        <th>Share</th>
+        <th class="sort">
+          <a href="?{% sort_query request 'smb_share' %}">Share{% if sort == 'smb_share' %}<span class="arrow">{% if order == 'desc' %}↓{% else %}↑{% endif %}</span>{% endif %}</a>
+        </th>
         <th>URIs</th>
         <th class="sort">
           <a href="?{% sort_query request 'finding' %}">Finding{% if sort == 'finding' %}<span class="arrow">{% if order == 'desc' %}↓{% else %}↑{% endif %}</span>{% endif %}</a>
@@ -160,7 +162,7 @@
               {% for u in row.uris %}
                 <div class="uri-line">
                   {% if u|slice:":7" == "file://" %}
-                    <a href="{% url 'findings:smb_terminal' %}?uri={{ u|urlencode }}">{{ u }}</a>
+                    <a href="{% url 'findings:smb_terminal' %}?uri={{ u|urlencode }}" target="_blank" rel="noopener noreferrer">{{ u }}</a>
                   {% else %}
                     <a href="{{ u }}" rel="noopener noreferrer">{{ u }}</a>
                   {% endif %}
