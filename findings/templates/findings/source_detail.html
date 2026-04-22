@@ -253,6 +253,9 @@
   <table class="data">
     <thead>
       <tr>
+        <th class="sort dt">
+          <a href="?{% sort_query request 'id' %}">ID{% if sort == 'id' %}<span class="arrow">{% if order == 'desc' %}↓{% else %}↑{% endif %}</span>{% endif %}</a>
+        </th>
         <th class="sort">
           <a href="?{% sort_query request 'occurred_at' %}">Datetime{% if sort == 'occurred_at' %}<span class="arrow">{% if order == 'desc' %}↓{% else %}↑{% endif %}</span>{% endif %}</a>
         </th>
@@ -280,6 +283,7 @@
     <tbody>
       {% for row in page_obj %}
         <tr>
+          <td class="dt">{{ row.pk }}</td>
           <td class="dt">{{ row.occurred_at|date:"Y-m-d H:i:s" }}Z</td>
           <td class="kind">{{ row.kind }}</td>
           <td class="{% if row.severity %}sev-{{ row.severity }}{% else %}sev-empty{% endif %}">{% if row.severity %}{{ row.severity }}{% else %}—{% endif %}</td>
@@ -304,7 +308,7 @@
           <td class="finding">{{ row.finding }}</td>
         </tr>
       {% empty %}
-        <tr><td colspan="8" class="muted">No rows match.</td></tr>
+        <tr><td colspan="9" class="muted">No rows match.</td></tr>
       {% endfor %}
     </tbody>
   </table>

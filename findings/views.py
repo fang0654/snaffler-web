@@ -105,6 +105,7 @@ def source_detail(request: HttpRequest, pk: int):
     sort = request.GET.get("sort", "smb_host")
     order = request.GET.get("order", "asc")
     allowed = {
+        "id",
         "occurred_at",
         "kind",
         "severity",
