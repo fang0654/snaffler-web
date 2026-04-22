@@ -208,6 +208,17 @@ def create_exclusion_filter(request: HttpRequest, pk: int):
     return HttpResponseRedirect(reverse("findings:source_detail", args=[source.pk]))
 
 
+@require_POST
+def delete_exclusion_filter(request: HttpRequest, pk: int, filter_pk: int):
+    source = get_object_or_404(Source, pk=pk)
+    flt = get_object_or_404(ExclusionFilter, pk=filter_pk, source=source)
+    flt.delete()
+    nxt = (request.POST.get("next") or "").strip()
+    if nxt.startswith("/") and not nxt.startswith("//"):
+        return HttpResponseRedirect(nxt)
+    return HttpResponseRedirect(reverse("findings:source_detail", args=[source.pk]))
+
+
 def smb_credentials(request: HttpRequest):
     if request.method == "POST":
         request.session["smb_domain"] = request.POST.get("domain", "").strip()
