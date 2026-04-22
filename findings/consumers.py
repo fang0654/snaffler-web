@@ -28,10 +28,10 @@ _PTY_CD_LINE_MAX_BYTES = 3800
 
 def _smb_cd_command_lines(cd_path: str, use_dfs: bool = False) -> list[str]:
     """
-    smbclient `cd` lines (each without trailing newline). Uses shlex.quote so
-    paths with spaces match between echoed $ lines and stdin. If one full-path
-    line would exceed the TTY limit, use sequential relative cds (one segment
-    per line) from the share root.
+    smbclient `cd` lines (each without trailing newline; paths are not shell-
+    quoted—smbclient accepts them as-is). If one full-path line would exceed
+    the TTY limit, use sequential relative cds (one segment per line) from the
+    share root.
 
     When use_dfs is True and the path has more than one segment, emit two steps:
     cd into the first folder only, then cd with the rest joined (so DFS can
@@ -51,25 +51,25 @@ def _smb_cd_command_lines(cd_path: str, use_dfs: bool = False) -> list[str]:
         first = segments[0]
         rest_segs = segments[1:]
         rest_bs = "\\".join(rest_segs)
-        rest_cmd = f"cd {shlex.quote(rest_bs)}"
+        rest_cmd = f"cd {rest_bs}"
         if len(rest_cmd.encode("utf-8")) <= _PTY_CD_LINE_MAX_BYTES:
             return [
-                f"cd {shlex.quote(first)}",
+                f"cd {first}",
                 rest_cmd,
             ]
-        lines = [f"cd {shlex.quote(first)}"]
+        lines = [f"cd {first}"]
         for seg in rest_segs:
-            lines.append(f"cd {shlex.quote(seg)}")
+            lines.append(f"cd {seg}")
         return lines
 
     cd_bs_full = path_norm.replace("/", "\\")
-    full_cmd = f"cd {shlex.quote(cd_bs_full)}"
+    full_cmd = f"cd {cd_bs_full}"
     if len(full_cmd.encode("utf-8")) <= _PTY_CD_LINE_MAX_BYTES:
         return [full_cmd]
     lines: list[str] = []
     for seg in segments:
         seg_bs = seg.replace("/", "\\")
-        lines.append(f"cd {shlex.quote(seg_bs)}")
+        lines.append(f"cd {seg_bs}")
     return lines
 
 
@@ -220,7 +220,7 @@ class SMBTerminalConsumer(AsyncWebsocketConsumer):
         cd_lines = _smb_cd_command_lines(cd_path, use_dfs=use_dfs)
 
         await self.send(text_data="$ shares\r\n")
-        await self.send(text_data=f"$ use {shlex.quote(share)}\r\n")
+        await self.send(text_data=f"$ use {share}\r\n")
         if use_dfs:
             await self.send(text_data="$ dfs_mode on\r\n")
         for line in cd_lines:
