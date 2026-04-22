@@ -21,6 +21,34 @@ try:
 except ImportError:
     HAS_PTY = False
 
+# TTY canonical mode often caps input lines (~4096 bytes). Long single-line `cd`
+# commands are truncated; split into per-directory cds. Use UTF-8 byte length.
+_PTY_CD_LINE_MAX_BYTES = 3800
+
+
+def _smb_cd_command_lines(cd_path: str) -> list[str]:
+    """
+    smbclient `cd` lines (each without trailing newline). Uses shlex.quote so
+    paths with spaces match between echoed $ lines and stdin. If one full-path
+    line would exceed the TTY limit, use sequential relative cds (one segment
+    per line) from the share root.
+    """
+    if not cd_path:
+        return []
+    path_norm = cd_path.replace("\\", "/").strip("/")
+    if not path_norm:
+        return []
+    cd_bs_full = path_norm.replace("/", "\\")
+    full_cmd = f"cd {shlex.quote(cd_bs_full)}"
+    if len(full_cmd.encode("utf-8")) <= _PTY_CD_LINE_MAX_BYTES:
+        return [full_cmd]
+    segments = [s for s in path_norm.split("/") if s]
+    lines: list[str] = []
+    for seg in segments:
+        seg_bs = seg.replace("/", "\\")
+        lines.append(f"cd {shlex.quote(seg_bs)}")
+    return lines
+
 
 def _build_smbclient_cmd(domain: str, username: str, password: str, host: str) -> list[str]:
     if domain:
@@ -154,17 +182,17 @@ class SMBTerminalConsumer(AsyncWebsocketConsumer):
 
         self.pump_task = asyncio.create_task(self._pump_output())
 
-        cd_backslash = cd_path.replace("/", chr(92)) if cd_path else ""
+        cd_lines = _smb_cd_command_lines(cd_path)
 
         await self.send(text_data="$ shares\r\n")
         await self.send(text_data=f"$ use {shlex.quote(share)}\r\n")
-        if cd_path:
-            await self.send(text_data=f"$ cd {shlex.quote(cd_backslash)}\r\n")
+        for line in cd_lines:
+            await self.send(text_data=f"$ {line}\r\n")
 
         init = "shares\n"
         init += f"use {share}\n"
-        if cd_path:
-            init += f"cd {cd_backslash}\n"
+        for line in cd_lines:
+            init += line + "\n"
         await self._write_input(init.encode())
 
     async def _write_input(self, data: bytes) -> None:
