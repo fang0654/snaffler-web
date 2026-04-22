@@ -13,7 +13,7 @@
 
 {% if not has_creds %}
   <div class="error" style="max-width:40rem;">Set domain, username, and password first.
-    <a href="{% url 'findings:smb_credentials' %}?next={{ request.get_full_path|urlencode }}">SMB login</a>
+    <a href="{% url 'findings:smb_credentials' %}?next={{ request.get_full_path|urlencode }}">Settings</a>
   </div>
 {% elif not host or not share %}
   <div class="error" style="max-width:40rem;">Missing host or share. Open this page from a <code>file://</code> URI link.</div>

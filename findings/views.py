@@ -224,6 +224,10 @@ def smb_credentials(request: HttpRequest):
     if request.method == "POST":
         request.session["smb_domain"] = request.POST.get("domain", "").strip()
         request.session["smb_username"] = request.POST.get("username", "").strip()
+        request.session["smb_use_dfs"] = request.POST.get("use_dfs") == "1"
+        request.session["smb_smbclient_py"] = request.POST.get(
+            "smbclient_py", ""
+        ).strip()
         pw = request.POST.get("password", "")
         if pw:
             request.session["smb_password"] = pw
@@ -237,6 +241,8 @@ def smb_credentials(request: HttpRequest):
             "domain": request.session.get("smb_domain", ""),
             "username": request.session.get("smb_username", ""),
             "password_saved": bool(request.session.get("smb_password")),
+            "use_dfs": bool(request.session.get("smb_use_dfs")),
+            "smbclient_py": request.session.get("smb_smbclient_py", "") or "",
             "next": request.GET.get("next", ""),
         },
     )

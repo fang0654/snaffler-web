@@ -50,16 +50,24 @@ def _smb_cd_command_lines(cd_path: str) -> list[str]:
     return lines
 
 
-def _build_smbclient_cmd(domain: str, username: str, password: str, host: str) -> list[str]:
+def _build_smbclient_cmd(
+    domain: str,
+    username: str,
+    password: str,
+    host: str,
+    smbclient_py_override: str = "",
+) -> list[str]:
     if domain:
         target = f"{domain}/{username}:{password}@{host}"
     else:
         target = f"{username}:{password}@{host}"
-    exe = str(getattr(settings, "SMBCLIENT_PY", "smbclient.py"))
-    if not os.path.isabs(exe):
-        found = shutil.which(os.path.basename(exe)) or shutil.which(exe)
-        if found:
-            exe = found
+    exe = (smbclient_py_override or "").strip()
+    if not exe:
+        exe = str(getattr(settings, "SMBCLIENT_PY", "smbclient.py"))
+        if not os.path.isabs(exe):
+            found = shutil.which(os.path.basename(exe)) or shutil.which(exe)
+            if found:
+                exe = found
     if exe.endswith(".py"):
         py = shutil.which("python3") or shutil.which("python") or sys.executable
         return [py, exe, target]
@@ -121,14 +129,16 @@ class SMBTerminalConsumer(AsyncWebsocketConsumer):
             return
 
         @sync_to_async
-        def _creds() -> tuple[str, str, str]:
+        def _creds() -> tuple[str, str, str, str, bool]:
             return (
                 session.get("smb_domain", "") or "",
                 session.get("smb_username", "") or "",
                 session.get("smb_password", "") or "",
+                (session.get("smb_smbclient_py") or "").strip(),
+                bool(session.get("smb_use_dfs")),
             )
 
-        domain, username, password = await _creds()
+        domain, username, password, smbclient_py, use_dfs = await _creds()
         if not username or not password:
             await self.close(code=4001)
             return
@@ -141,7 +151,9 @@ class SMBTerminalConsumer(AsyncWebsocketConsumer):
 
         await self.accept()
 
-        cmd = _build_smbclient_cmd(domain, username, password, host)
+        cmd = _build_smbclient_cmd(
+            domain, username, password, host, smbclient_py_override=smbclient_py
+        )
         display = _format_smbclient_command_display(cmd, domain, username, host)
         await self.send(text_data=f"$ {display}\r\n")
 
@@ -186,11 +198,15 @@ class SMBTerminalConsumer(AsyncWebsocketConsumer):
 
         await self.send(text_data="$ shares\r\n")
         await self.send(text_data=f"$ use {shlex.quote(share)}\r\n")
+        if use_dfs:
+            await self.send(text_data="$ dfs_mode on\r\n")
         for line in cd_lines:
             await self.send(text_data=f"$ {line}\r\n")
 
         init = "shares\n"
         init += f"use {share}\n"
+        if use_dfs:
+            init += "dfs_mode on\n"
         for line in cd_lines:
             init += line + "\n"
         await self._write_input(init.encode())
