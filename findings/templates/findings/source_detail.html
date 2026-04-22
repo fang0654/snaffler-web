@@ -43,11 +43,11 @@
     border: 1px solid var(--border);
   }
   .multiselect-actions button:hover { filter: brightness(1.12); }
-  .exclusion-filters-box > label {
+  .exclusion-filters-hint {
     display: block;
-    font-size: 0.8rem;
-    color: var(--muted);
-    margin-bottom: 0.35rem;
+    font-size: 0.72rem;
+    line-height: 1.35;
+    margin: 0 0 0.35rem 0;
   }
   .exclusion-filters-list {
     display: flex;
@@ -209,7 +209,8 @@
       </div>
     </div>
     <div class="field multiselect-field exclusion-filters-box">
-      <label>Filters <span class="muted">(checked = exclude matching findings)</span></label>
+      <label>Filters</label>
+      <span class="muted exclusion-filters-hint">Checked = exclude matching findings.</span>
       {% if exclusion_filters %}
         <div class="exclusion-filters-list">
           {% for f in exclusion_filters %}
