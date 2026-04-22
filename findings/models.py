@@ -40,3 +40,28 @@ class Finding(models.Model):
             models.Index(fields=["source", "occurred_at"]),
             models.Index(fields=["source", "kind"]),
         ]
+
+
+class ExclusionFilter(models.Model):
+    """Saved substring; when enabled via checkbox, findings containing it are hidden."""
+
+    source = models.ForeignKey(
+        Source, on_delete=models.CASCADE, related_name="exclusion_filters"
+    )
+    substring = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["source", "substring"],
+                name="findings_exclusionfilter_source_substring_uniq",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        preview = self.substring.replace("\n", " ")
+        if len(preview) > 60:
+            preview = preview[:57] + "…"
+        return preview

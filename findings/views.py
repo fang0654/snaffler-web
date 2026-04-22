@@ -5,8 +5,9 @@ from django.db.models import Q
 from django.http import HttpRequest, HttpResponseRedirect
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
+from django.views.decorators.http import require_POST
 
-from .models import Finding, Source
+from .models import ExclusionFilter, Source
 from .services import import_snaffler_upload
 from .smb_parse import parse_smb_from_file_uri
 
@@ -88,6 +89,19 @@ def source_detail(request: HttpRequest, pk: int):
     selected_hosts = request.GET.getlist("hosts")
     qs = _apply_multiselect_in(qs, "smb_host", selected_hosts)
 
+    selected_exclude_ids: list[int] = []
+    for raw in request.GET.getlist("exclude"):
+        try:
+            selected_exclude_ids.append(int(raw))
+        except ValueError:
+            continue
+    if selected_exclude_ids:
+        active_filters = ExclusionFilter.objects.filter(
+            source=source, pk__in=selected_exclude_ids
+        )
+        for flt in active_filters:
+            qs = qs.exclude(finding__icontains=flt.substring)
+
     sort = request.GET.get("sort", "smb_host")
     order = request.GET.get("order", "asc")
     allowed = {
@@ -154,6 +168,8 @@ def source_detail(request: HttpRequest, pk: int):
     if host_rows_empty:
         host_options.append({"value": _EMPTY_MULTI, "label": "(no host)"})
 
+    exclusion_filters = list(source.exclusion_filters.all())
+
     return render(
         request,
         "findings/source_detail.html",
@@ -173,9 +189,23 @@ def source_detail(request: HttpRequest, pk: int):
             "host_options": host_options,
             "selected_plugins": selected_plugins,
             "selected_hosts": selected_hosts,
+            "exclusion_filters": exclusion_filters,
+            "selected_exclude_ids": selected_exclude_ids,
             "filter_query": _filter_query(request),
         },
     )
+
+
+@require_POST
+def create_exclusion_filter(request: HttpRequest, pk: int):
+    source = get_object_or_404(Source, pk=pk)
+    text = (request.POST.get("text") or "").strip()
+    nxt = (request.POST.get("next") or "").strip()
+    if text:
+        ExclusionFilter.objects.get_or_create(source=source, substring=text)
+    if nxt.startswith("/") and not nxt.startswith("//"):
+        return HttpResponseRedirect(nxt)
+    return HttpResponseRedirect(reverse("findings:source_detail", args=[source.pk]))
 
 
 def smb_credentials(request: HttpRequest):

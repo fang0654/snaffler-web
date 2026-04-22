@@ -40,6 +40,71 @@
     border: 1px solid var(--border);
   }
   .multiselect-actions button:hover { filter: brightness(1.12); }
+  .exclusion-filters-box {
+    flex: 1 1 100%;
+    margin-top: 0.25rem;
+  }
+  .exclusion-filters-box > label {
+    display: block;
+    font-size: 0.8rem;
+    color: var(--muted);
+    margin-bottom: 0.35rem;
+  }
+  .exclusion-filters-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    max-height: 10rem;
+    overflow: auto;
+    padding: 0.35rem 0;
+  }
+  .exclusion-filters-list label {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    font-size: 0.85rem;
+    font-weight: normal;
+    color: var(--text);
+    cursor: pointer;
+    margin: 0;
+  }
+  .exclusion-filters-list input { margin-top: 0.2rem; flex-shrink: 0; }
+  .exclusion-filters-list code {
+    font-size: 0.78rem;
+    word-break: break-word;
+    white-space: pre-wrap;
+    color: var(--text);
+  }
+  #create-filter-bar {
+    display: none;
+    position: fixed;
+    bottom: 1.25rem;
+    right: 1.25rem;
+    z-index: 100;
+    align-items: center;
+    gap: 0.65rem;
+    flex-wrap: wrap;
+    max-width: min(36rem, calc(100vw - 2rem));
+    padding: 0.65rem 0.85rem;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.35);
+  }
+  #create-filter-bar.visible { display: flex; }
+  #create-filter-preview {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.75rem;
+    color: var(--muted);
+    flex: 1 1 12rem;
+    max-height: 3.6rem;
+    overflow: hidden;
+  }
+  #create-filter-bar button {
+    flex-shrink: 0;
+    padding: 0.45rem 0.75rem;
+    font-size: 0.85rem;
+  }
 </style>
 {% endblock %}
 
@@ -117,8 +182,34 @@
         <button type="button" id="hosts-none" class="btn-ms">Deselect all</button>
       </div>
     </div>
+    <div class="exclusion-filters-box">
+      <label>Filters <span class="muted">(checked = exclude matching findings)</span></label>
+      {% if exclusion_filters %}
+        <div class="exclusion-filters-list">
+          {% for f in exclusion_filters %}
+            <label>
+              <input type="checkbox" name="exclude" value="{{ f.pk }}" {% if f.pk in selected_exclude_ids %}checked{% endif %}/>
+              <code>{{ f.substring }}</code>
+            </label>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="muted" style="margin:0;">Select text in a finding below, then use <strong>Create filter</strong>.</p>
+      {% endif %}
+    </div>
   </div>
 </form>
+
+<form id="create-exclusion-filter-form" method="post" action="{% url 'findings:create_exclusion_filter' source.pk %}" style="display:none;">
+  {% csrf_token %}
+  <input type="hidden" name="next" value="{{ request.get_full_path }}"/>
+  <input type="hidden" name="text" id="create-exclusion-filter-text" value=""/>
+</form>
+
+<div id="create-filter-bar" aria-live="polite">
+  <div id="create-filter-preview"></div>
+  <button type="button" id="create-filter-submit">Create filter</button>
+</div>
 
 <div style="overflow:auto; max-height: calc(100vh - 18rem); border: 1px solid var(--border); border-radius: 8px;">
   <table class="data">
@@ -216,6 +307,53 @@
   }
   wire("plugins", "plugins-all", "plugins-none");
   wire("hosts", "hosts-all", "hosts-none");
+
+  var bar = document.getElementById("create-filter-bar");
+  var preview = document.getElementById("create-filter-preview");
+  var form = document.getElementById("create-exclusion-filter-form");
+  var textInput = document.getElementById("create-exclusion-filter-text");
+  var submitBtn = document.getElementById("create-filter-submit");
+  if (!bar || !form || !textInput || !submitBtn) return;
+
+  function findingCellFromSelection(sel) {
+    if (!sel || sel.rangeCount === 0) return null;
+    var n = sel.anchorNode;
+    if (!n) return null;
+    if (n.nodeType === 3) n = n.parentElement;
+    if (!n || !n.closest) return null;
+    var td = n.closest("td.finding");
+    return td;
+  }
+
+  function updateBar() {
+    var sel = window.getSelection();
+    var td = findingCellFromSelection(sel);
+    var t = (sel && sel.toString()) ? sel.toString().trim() : "";
+    if (td && t.length) {
+      preview.textContent = t.length > 200 ? t.slice(0, 197) + "…" : t;
+      bar.classList.add("visible");
+    } else {
+      bar.classList.remove("visible");
+    }
+  }
+
+  document.addEventListener("mouseup", function () {
+    setTimeout(updateBar, 0);
+  });
+  document.addEventListener("keyup", function (e) {
+    if (e.key === "Escape") {
+      bar.classList.remove("visible");
+    }
+  });
+
+  submitBtn.addEventListener("click", function () {
+    var sel = window.getSelection();
+    var td = findingCellFromSelection(sel);
+    var t = (sel && sel.toString()) ? sel.toString().trim() : "";
+    if (!td || !t.length) return;
+    textInput.value = t;
+    form.submit();
+  });
 })();
 </script>
 {% endblock %}
