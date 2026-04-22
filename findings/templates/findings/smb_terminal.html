@@ -31,7 +31,19 @@
 (function () {
   const params = JSON.parse(document.getElementById('ws-params').textContent);
   const wsProto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const q = new URLSearchParams({ host: params.host, share: params.share, cd: params.cd || '' });
+  var q;
+  if (params.finding != null && params.uri_index != null) {
+    q = new URLSearchParams({
+      finding: String(params.finding),
+      uri_index: String(params.uri_index),
+    });
+  } else {
+    q = new URLSearchParams({
+      host: params.host,
+      share: params.share,
+      cd: params.cd || '',
+    });
+  }
   const ws = new WebSocket(wsProto + '//' + location.host + '/ws/smb/?' + q.toString());
   ws.binaryType = 'arraybuffer';
 

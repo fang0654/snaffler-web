@@ -7,7 +7,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_POST
 
-from .models import ExclusionFilter, Source
+from .models import ExclusionFilter, Finding, Source
 from .services import import_snaffler_upload
 from .smb_parse import parse_smb_from_file_uri
 
@@ -243,10 +243,27 @@ def smb_credentials(request: HttpRequest):
 
 
 def smb_terminal(request: HttpRequest):
-    uri = request.GET.get("uri", "").strip()
     host = request.GET.get("host", "").strip()
     share = request.GET.get("share", "").strip()
     cd = request.GET.get("cd", "").strip()
+    uri = request.GET.get("uri", "").strip()
+    finding_pk_raw = request.GET.get("finding", "").strip()
+    uri_index_raw = request.GET.get("uri_index", "").strip()
+
+    finding_for_ws: int | None = None
+    uri_index_for_ws: int | None = None
+    if finding_pk_raw and uri_index_raw != "":
+        try:
+            row = Finding.objects.get(pk=int(finding_pk_raw))
+            idx = int(uri_index_raw)
+            uris = row.uris or []
+            if 0 <= idx < len(uris):
+                uri = uris[idx]
+                finding_for_ws = row.pk
+                uri_index_for_ws = idx
+        except (ValueError, Finding.DoesNotExist):
+            pass
+
     if uri:
         p = parse_smb_from_file_uri(uri)
         if p:
@@ -256,7 +273,15 @@ def smb_terminal(request: HttpRequest):
     has_creds = bool(
         request.session.get("smb_username") and request.session.get("smb_password")
     )
-    ws_params = {"host": host, "share": share, "cd": cd}
+    if (
+        finding_for_ws is not None
+        and uri_index_for_ws is not None
+        and host
+        and share
+    ):
+        ws_params = {"finding": finding_for_ws, "uri_index": uri_index_for_ws}
+    else:
+        ws_params = {"host": host, "share": share, "cd": cd}
     return render(
         request,
         "findings/smb_terminal.html",

@@ -296,7 +296,7 @@
               {% for u in row.uris %}
                 <div class="uri-line">
                   {% if u|slice:":7" == "file://" %}
-                    <a href="{% url 'findings:smb_terminal' %}?uri={{ u|urlencode }}" target="_blank" rel="noopener noreferrer">{{ u }}</a>
+                    <a href="{% url 'findings:smb_terminal' %}?finding={{ row.pk }}&amp;uri_index={{ forloop.counter0 }}" target="_blank" rel="noopener noreferrer">{{ u }}</a>
                   {% else %}
                     <a href="{{ u }}" rel="noopener noreferrer">{{ u }}</a>
                   {% endif %}

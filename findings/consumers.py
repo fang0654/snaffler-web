@@ -11,6 +11,9 @@ from asgiref.sync import sync_to_async
 from channels.generic.websocket import AsyncWebsocketConsumer
 from django.conf import settings
 
+from .models import Finding
+from .smb_parse import parse_smb_from_file_uri
+
 try:
     import pty
 
@@ -56,6 +59,27 @@ def _write_all_fd(fd: int, data: bytes) -> None:
         data = data[n:]
 
 
+@sync_to_async
+def _ws_target_from_query(qs: dict[str, list[str]]) -> tuple[str, str, str]:
+    finding_id = (qs.get("finding") or [""])[0].strip()
+    uri_idx_s = (qs.get("uri_index") or [""])[0].strip()
+    if finding_id and uri_idx_s != "":
+        try:
+            row = Finding.objects.get(pk=int(finding_id))
+            idx = int(uri_idx_s)
+            uris = row.uris or []
+            if 0 <= idx < len(uris):
+                p = parse_smb_from_file_uri(uris[idx])
+                if p and p["host"] and p["share"]:
+                    return p["host"], p["share"], p["cd_path"]
+        except (ValueError, Finding.DoesNotExist):
+            pass
+    host = (qs.get("host") or [""])[0].strip()
+    share = (qs.get("share") or [""])[0].strip()
+    cd_path = (qs.get("cd") or [""])[0].strip()
+    return host, share, cd_path
+
+
 class SMBTerminalConsumer(AsyncWebsocketConsumer):
     proc: asyncio.subprocess.Process | None = None
     pump_task: asyncio.Task | None = None
@@ -82,9 +106,7 @@ class SMBTerminalConsumer(AsyncWebsocketConsumer):
             return
 
         qs = parse_qs(self.scope.get("query_string", b"").decode())
-        host = (qs.get("host") or [""])[0].strip()
-        share = (qs.get("share") or [""])[0].strip()
-        cd_path = (qs.get("cd") or [""])[0].strip()
+        host, share, cd_path = await _ws_target_from_query(qs)
         if not host or not share:
             await self.close(code=4002)
             return
