@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
+
 from django.core.paginator import Paginator
 from django.db.models import Q
 from django.http import HttpRequest, HttpResponseRedirect, JsonResponse
@@ -13,6 +15,29 @@ from .smb_parse import parse_smb_from_file_uri
 
 # Multiselect option value for rows with empty plugin_name or smb_host
 _EMPTY_MULTI = "__empty__"
+
+
+def _append_query_value(path: str, key: str, value: int) -> str:
+    """Add key=<value> to a relative path's query string if not already present."""
+    p = urlparse(path)
+    pairs: list[tuple[str, str]] = list(parse_qsl(p.query, keep_blank_values=True))
+    sval = str(value)
+    if any(k == key and v == sval for k, v in pairs):
+        return path
+    pairs.append((key, sval))
+    new_q = urlencode(pairs)
+    return urlunparse(
+        (p.scheme, p.netloc, p.path, p.params, new_q, p.fragment)
+    )
+
+
+def _redirect_after_new_filter(
+    next_path: str, source: Source, param: str, filter_pk: int
+) -> str:
+    if next_path.startswith("/") and not next_path.startswith("//"):
+        return _append_query_value(next_path, param, filter_pk)
+    base = reverse("findings:source_detail", args=[source.pk])
+    return _append_query_value(base, param, filter_pk)
 
 
 def _filter_query(request: HttpRequest) -> str:
@@ -267,10 +292,14 @@ def create_exclusion_filter(request: HttpRequest, pk: int):
     text = (request.POST.get("text") or "").strip()
     nxt = (request.POST.get("next") or "").strip()
     if text:
-        ExclusionFilter.objects.get_or_create(source=source, substring=text)
-    if nxt.startswith("/") and not nxt.startswith("//"):
-        return HttpResponseRedirect(nxt)
-    return HttpResponseRedirect(reverse("findings:source_detail", args=[source.pk]))
+        obj, _ = ExclusionFilter.objects.get_or_create(
+            source=source, substring=text
+        )
+        nxt = _redirect_after_new_filter(nxt, source, "exclude", obj.pk)
+    else:
+        if not (nxt.startswith("/") and not nxt.startswith("//")):
+            nxt = reverse("findings:source_detail", args=[source.pk])
+    return HttpResponseRedirect(nxt)
 
 
 @require_POST
@@ -279,13 +308,15 @@ def create_valid_filter(request: HttpRequest, pk: int):
     text = (request.POST.get("text") or "").strip()
     nxt = (request.POST.get("next") or "").strip()
     if text:
-        ValidFilter.objects.get_or_create(source=source, substring=text)
+        obj, _ = ValidFilter.objects.get_or_create(source=source, substring=text)
         Finding.objects.filter(
             source=source, finding__icontains=text
         ).update(is_valid=True)
-    if nxt.startswith("/") and not nxt.startswith("//"):
-        return HttpResponseRedirect(nxt)
-    return HttpResponseRedirect(reverse("findings:source_detail", args=[source.pk]))
+        nxt = _redirect_after_new_filter(nxt, source, "exclude_valid", obj.pk)
+    else:
+        if not (nxt.startswith("/") and not nxt.startswith("//")):
+            nxt = reverse("findings:source_detail", args=[source.pk])
+    return HttpResponseRedirect(nxt)
 
 
 @require_POST
