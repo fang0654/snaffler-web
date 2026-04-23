@@ -33,7 +33,7 @@ class Finding(models.Model):
     smb_host = models.CharField(max_length=255, blank=True, default="")
     smb_share = models.CharField(max_length=255, blank=True, default="")
     smb_cd_path = models.TextField(blank=True, default="")
-    is_valid = models.BooleanField(default=True, db_index=True)
+    is_valid = models.BooleanField(default=False, db_index=True)
 
     class Meta:
         ordering = ["occurred_at"]

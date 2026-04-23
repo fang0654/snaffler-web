@@ -5,7 +5,7 @@ from django.db.models import Q
 from django.http import HttpRequest, HttpResponseRedirect, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_GET, require_POST
 
 from .models import ExclusionFilter, Finding, Source, ValidFilter
 from .services import import_snaffler_upload
@@ -89,24 +89,6 @@ def source_detail(request: HttpRequest, pk: int):
     selected_hosts = request.GET.getlist("hosts")
     qs = _apply_multiselect_in(qs, "smb_host", selected_hosts)
 
-    selected_include_valid_ids: list[int] = []
-    for raw in request.GET.getlist("include_valid"):
-        try:
-            selected_include_valid_ids.append(int(raw))
-        except ValueError:
-            continue
-    if selected_include_valid_ids:
-        active_valid = list(
-            ValidFilter.objects.filter(
-                source=source, pk__in=selected_include_valid_ids
-            )
-        )
-        if active_valid:
-            qv = Q()
-            for flt in active_valid:
-                qv |= Q(finding__icontains=flt.substring)
-            qs = qs.filter(qv)
-
     selected_exclude_ids: list[int] = []
     for raw in request.GET.getlist("exclude"):
         try:
@@ -118,6 +100,19 @@ def source_detail(request: HttpRequest, pk: int):
             source=source, pk__in=selected_exclude_ids
         )
         for flt in active_filters:
+            qs = qs.exclude(finding__icontains=flt.substring)
+
+    selected_valid_exclude_ids: list[int] = []
+    for raw in request.GET.getlist("exclude_valid"):
+        try:
+            selected_valid_exclude_ids.append(int(raw))
+        except ValueError:
+            continue
+    if selected_valid_exclude_ids:
+        active_valid = ValidFilter.objects.filter(
+            source=source, pk__in=selected_valid_exclude_ids
+        )
+        for flt in active_valid:
             qs = qs.exclude(finding__icontains=flt.substring)
 
     sort = request.GET.get("sort", "smb_host")
@@ -213,10 +208,42 @@ def source_detail(request: HttpRequest, pk: int):
             "exclusion_filters": exclusion_filters,
             "valid_filters": valid_filters,
             "selected_exclude_ids": selected_exclude_ids,
-            "selected_include_valid_ids": selected_include_valid_ids,
+            "selected_valid_exclude_ids": selected_valid_exclude_ids,
             "filter_query": _filter_query(request),
         },
     )
+
+
+@require_GET
+def export_valid_findings_json(request: HttpRequest, pk: int) -> JsonResponse:
+    """Download all is_valid=True findings for this source as JSON (attachment)."""
+    source = get_object_or_404(Source, pk=pk)
+    rows = (
+        source.findings.filter(is_valid=True)
+        .order_by("occurred_at", "id")
+        .values("kind", "severity", "plugin_name", "smb_host", "smb_share", "uris", "finding")
+    )
+    data = [
+        {
+            "type": r["kind"],
+            "severity": r["severity"] or "",
+            "plugin": r["plugin_name"] or "",
+            "host": r["smb_host"] or "",
+            "share": r["smb_share"] or "",
+            "uris": r["uris"] if r["uris"] is not None else [],
+            "finding": r["finding"],
+        }
+        for r in rows
+    ]
+    resp = JsonResponse(
+        data,
+        safe=False,
+        json_dumps_params={"ensure_ascii": False, "indent": 2},
+    )
+    resp["Content-Disposition"] = (
+        f'attachment; filename="valid-findings-source-{source.pk}.json"'
+    )
+    return resp
 
 
 @require_POST

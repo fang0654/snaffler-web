@@ -11,6 +11,6 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name="finding",
             name="is_valid",
-            field=models.BooleanField(db_index=True, default=True),
+            field=models.BooleanField(db_index=True, default=False),
         ),
     ]

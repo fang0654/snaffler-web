@@ -8,6 +8,11 @@ urlpatterns = [
     path("", views.home, name="home"),
     path("source/<int:pk>/", views.source_detail, name="source_detail"),
     path(
+        "source/<int:pk>/export/valid.json",
+        views.export_valid_findings_json,
+        name="export_valid_json",
+    ),
+    path(
         "source/<int:pk>/exclusion-filter/",
         views.create_exclusion_filter,
         name="create_exclusion_filter",
