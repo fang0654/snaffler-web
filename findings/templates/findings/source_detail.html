@@ -131,7 +131,29 @@
     padding: 0.45rem 0.75rem;
     font-size: 0.85rem;
   }
-  th.col-valid, td.col-valid { text-align: center; width: 3.25rem; }
+  th.col-valid, td.col-valid { text-align: center; min-width: 3.25rem; }
+  .findings-table-wrap { overflow: auto; max-height: calc(100vh - 18rem); border: 1px solid var(--border); border-radius: 8px; }
+  table.data.resizable-cols { table-layout: fixed; }
+  table.data.resizable-cols th.resizable-h {
+    position: relative;
+    padding-right: 0.75rem;
+    max-width: none;
+  }
+  table.data.resizable-cols th.resizable-h .th-resize-handle {
+    position: absolute;
+    right: 0;
+    top: 0;
+    width: 6px;
+    height: 100%;
+    min-height: 1.5rem;
+    cursor: col-resize;
+    user-select: none;
+    z-index: 2;
+  }
+  table.data.resizable-cols th.resizable-h .th-resize-handle:hover { background: rgba(88, 166, 255, 0.2); }
+  table.data.resizable-cols tbody td.finding { max-width: none; }
+  body.col-resize-active { user-select: none; cursor: col-resize; }
+  body.col-resize-active * { cursor: col-resize !important; }
 </style>
 {% endblock %}
 
@@ -290,36 +312,44 @@
   </div>
 </div>
 
-<div style="overflow:auto; max-height: calc(100vh - 18rem); border: 1px solid var(--border); border-radius: 8px;">
-  <table class="data">
+<div class="findings-table-wrap">
+  <table class="data resizable-cols" id="findings-table" data-source-pk="{{ source.pk }}">
+    <colgroup id="findings-cols">
+      <col>
+      <col>
+      <col>
+      <col>
+      <col>
+      <col>
+      <col>
+      <col>
+      <col>
+    </colgroup>
     <thead>
       <tr>
-        <th class="sort dt">
+        <th class="sort resizable-h dt">
           <a href="?{% sort_query request 'id' %}">ID{% if sort == 'id' %}<span class="arrow">{% if order == 'desc' %}↓{% else %}↑{% endif %}</span>{% endif %}</a>
         </th>
-        <th class="sort col-valid">
+        <th class="sort resizable-h col-valid">
           <a href="?{% sort_query request 'is_valid' %}">Valid{% if sort == 'is_valid' %}<span class="arrow">{% if order == 'desc' %}↓{% else %}↑{% endif %}</span>{% endif %}</a>
         </th>
-        <th class="sort">
-          <a href="?{% sort_query request 'occurred_at' %}">Datetime{% if sort == 'occurred_at' %}<span class="arrow">{% if order == 'desc' %}↓{% else %}↑{% endif %}</span>{% endif %}</a>
-        </th>
-        <th class="sort">
+        <th class="sort resizable-h">
           <a href="?{% sort_query request 'kind' %}">Type{% if sort == 'kind' %}<span class="arrow">{% if order == 'desc' %}↓{% else %}↑{% endif %}</span>{% endif %}</a>
         </th>
-        <th class="sort">
+        <th class="sort resizable-h">
           <a href="?{% sort_query request 'severity' %}">Severity{% if sort == 'severity' %}<span class="arrow">{% if order == 'desc' %}↓{% else %}↑{% endif %}</span>{% endif %}</a>
         </th>
-        <th class="sort">
+        <th class="sort resizable-h">
           <a href="?{% sort_query request 'plugin_name' %}">Plugin{% if sort == 'plugin_name' %}<span class="arrow">{% if order == 'desc' %}↓{% else %}↑{% endif %}</span>{% endif %}</a>
         </th>
-        <th class="sort">
+        <th class="sort resizable-h">
           <a href="?{% sort_query request 'smb_host' %}">Host{% if sort == 'smb_host' %}<span class="arrow">{% if order == 'desc' %}↓{% else %}↑{% endif %}</span>{% endif %}</a>
         </th>
-        <th class="sort">
+        <th class="sort resizable-h">
           <a href="?{% sort_query request 'smb_share' %}">Share{% if sort == 'smb_share' %}<span class="arrow">{% if order == 'desc' %}↓{% else %}↑{% endif %}</span>{% endif %}</a>
         </th>
-        <th>URIs</th>
-        <th class="sort">
+        <th class="resizable-h">URIs</th>
+        <th class="sort resizable-h">
           <a href="?{% sort_query request 'finding' %}">Finding{% if sort == 'finding' %}<span class="arrow">{% if order == 'desc' %}↓{% else %}↑{% endif %}</span>{% endif %}</a>
         </th>
       </tr>
@@ -331,7 +361,6 @@
           <td class="col-valid">
             <input type="checkbox" class="finding-is-valid" data-url="{% url 'findings:set_finding_is_valid' source.pk row.pk %}" {% if row.is_valid %}checked{% endif %} title="Valid" aria-label="Valid"/>
           </td>
-          <td class="dt">{{ row.occurred_at|date:"Y-m-d H:i:s" }}Z</td>
           <td class="kind">{{ row.kind }}</td>
           <td class="{% if row.severity %}sev-{{ row.severity }}{% else %}sev-empty{% endif %}">{% if row.severity %}{{ row.severity }}{% else %}—{% endif %}</td>
           <td class="kind">{% if row.plugin_name %}{{ row.plugin_name }}{% else %}—{% endif %}</td>
@@ -355,7 +384,7 @@
           <td class="finding">{{ row.finding }}</td>
         </tr>
       {% empty %}
-        <tr><td colspan="10" class="muted">No rows match.</td></tr>
+        <tr><td colspan="9" class="muted">No rows match.</td></tr>
       {% endfor %}
     </tbody>
   </table>
@@ -497,6 +526,74 @@
         el.disabled = false;
       });
   });
+})();
+
+(function () {
+  var table = document.getElementById("findings-table");
+  if (!table) return;
+  var colgroup = document.getElementById("findings-cols");
+  if (!colgroup) return;
+  var cols = colgroup.querySelectorAll("col");
+  var ths = table.querySelectorAll("thead th.resizable-h");
+  if (cols.length !== ths.length) return;
+  var pk = table.getAttribute("data-source-pk") || "0";
+  var storageKey = "snaffler:findingsTableCols:" + pk;
+
+  function loadWidths() {
+    try {
+      var raw = localStorage.getItem(storageKey);
+      if (!raw) return;
+      var arr = JSON.parse(raw);
+      if (!Array.isArray(arr) || arr.length !== cols.length) return;
+      for (var i = 0; i < arr.length; i++) {
+        if (arr[i]) cols[i].style.width = arr[i];
+      }
+    } catch (e) {}
+  }
+
+  function saveWidths() {
+    var arr = [];
+    for (var w = 0; w < cols.length; w++) {
+      arr.push(cols[w].style.width || "");
+    }
+    try { localStorage.setItem(storageKey, JSON.stringify(arr)); } catch (e) {}
+  }
+
+  function onColMouseDown(colIndex, e) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.button !== 0) return;
+    var colEl = cols[colIndex];
+    var startX = e.clientX;
+    var startW = colEl.getBoundingClientRect().width;
+    var minW = colIndex === 1 ? 44 : 32;
+    function onMove(e2) {
+      var dx = e2.clientX - startX;
+      var nw = Math.max(minW, startW + dx);
+      colEl.style.width = nw + "px";
+    }
+    function onUp() {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+      document.body.classList.remove("col-resize-active");
+      saveWidths();
+    }
+    document.body.classList.add("col-resize-active");
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  }
+
+  loadWidths();
+  for (var j = 0; j < ths.length; j++) {
+    (function (i) {
+      var h = document.createElement("span");
+      h.className = "th-resize-handle";
+      h.setAttribute("aria-hidden", "true");
+      h.title = "Drag to resize";
+      h.addEventListener("mousedown", function (e) { onColMouseDown(i, e); });
+      ths[i].appendChild(h);
+    })(j);
+  }
 })();
 </script>
 {% endblock %}
