@@ -13,9 +13,24 @@ urlpatterns = [
         name="create_exclusion_filter",
     ),
     path(
+        "source/<int:pk>/valid-filter/",
+        views.create_valid_filter,
+        name="create_valid_filter",
+    ),
+    path(
         "source/<int:pk>/exclusion-filter/<int:filter_pk>/delete/",
         views.delete_exclusion_filter,
         name="delete_exclusion_filter",
+    ),
+    path(
+        "source/<int:pk>/valid-filter/<int:filter_pk>/delete/",
+        views.delete_valid_filter,
+        name="delete_valid_filter",
+    ),
+    path(
+        "source/<int:pk>/finding/<int:finding_pk>/is-valid/",
+        views.set_finding_is_valid,
+        name="set_finding_is_valid",
     ),
     path("credentials/smb/", views.smb_credentials, name="smb_credentials"),
     path("terminal/smb/", views.smb_terminal, name="smb_terminal"),

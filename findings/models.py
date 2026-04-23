@@ -33,6 +33,7 @@ class Finding(models.Model):
     smb_host = models.CharField(max_length=255, blank=True, default="")
     smb_share = models.CharField(max_length=255, blank=True, default="")
     smb_cd_path = models.TextField(blank=True, default="")
+    is_valid = models.BooleanField(default=True, db_index=True)
 
     class Meta:
         ordering = ["occurred_at"]
@@ -57,6 +58,31 @@ class ExclusionFilter(models.Model):
             models.UniqueConstraint(
                 fields=["source", "substring"],
                 name="findings_exclusionfilter_source_substring_uniq",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        preview = self.substring.replace("\n", " ")
+        if len(preview) > 60:
+            preview = preview[:57] + "…"
+        return preview
+
+
+class ValidFilter(models.Model):
+    """Saved substring; on create, matching findings in this source are set is_valid=True."""
+
+    source = models.ForeignKey(
+        Source, on_delete=models.CASCADE, related_name="valid_filters"
+    )
+    substring = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=("source", "substring"),
+                name="findings_validfilter_source_substring_uniq",
             ),
         ]
 

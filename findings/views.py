@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from django.core.paginator import Paginator
 from django.db.models import Q
-from django.http import HttpRequest, HttpResponseRedirect
+from django.http import HttpRequest, HttpResponseRedirect, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_POST
 
-from .models import ExclusionFilter, Finding, Source
+from .models import ExclusionFilter, Finding, Source, ValidFilter
 from .services import import_snaffler_upload
 from .smb_parse import parse_smb_from_file_uri
 
@@ -89,6 +89,24 @@ def source_detail(request: HttpRequest, pk: int):
     selected_hosts = request.GET.getlist("hosts")
     qs = _apply_multiselect_in(qs, "smb_host", selected_hosts)
 
+    selected_include_valid_ids: list[int] = []
+    for raw in request.GET.getlist("include_valid"):
+        try:
+            selected_include_valid_ids.append(int(raw))
+        except ValueError:
+            continue
+    if selected_include_valid_ids:
+        active_valid = list(
+            ValidFilter.objects.filter(
+                source=source, pk__in=selected_include_valid_ids
+            )
+        )
+        if active_valid:
+            qv = Q()
+            for flt in active_valid:
+                qv |= Q(finding__icontains=flt.substring)
+            qs = qs.filter(qv)
+
     selected_exclude_ids: list[int] = []
     for raw in request.GET.getlist("exclude"):
         try:
@@ -109,6 +127,7 @@ def source_detail(request: HttpRequest, pk: int):
         "occurred_at",
         "kind",
         "severity",
+        "is_valid",
         "plugin_name",
         "smb_host",
         "smb_share",
@@ -170,6 +189,7 @@ def source_detail(request: HttpRequest, pk: int):
         host_options.append({"value": _EMPTY_MULTI, "label": "(no host)"})
 
     exclusion_filters = list(source.exclusion_filters.all())
+    valid_filters = list(source.valid_filters.all())
 
     return render(
         request,
@@ -191,10 +211,27 @@ def source_detail(request: HttpRequest, pk: int):
             "selected_plugins": selected_plugins,
             "selected_hosts": selected_hosts,
             "exclusion_filters": exclusion_filters,
+            "valid_filters": valid_filters,
             "selected_exclude_ids": selected_exclude_ids,
+            "selected_include_valid_ids": selected_include_valid_ids,
             "filter_query": _filter_query(request),
         },
     )
+
+
+@require_POST
+def set_finding_is_valid(request: HttpRequest, pk: int, finding_pk: int):
+    source = get_object_or_404(Source, pk=pk)
+    finding = get_object_or_404(Finding, pk=finding_pk, source=source)
+    finding.is_valid = request.POST.get("is_valid") == "1"
+    finding.save(update_fields=["is_valid"])
+    accept = request.META.get("HTTP_ACCEPT", "")
+    if "application/json" in accept:
+        return JsonResponse({"ok": True, "is_valid": finding.is_valid})
+    nxt = (request.POST.get("next") or "").strip()
+    if nxt.startswith("/") and not nxt.startswith("//"):
+        return HttpResponseRedirect(nxt)
+    return HttpResponseRedirect(reverse("findings:source_detail", args=[source.pk]))
 
 
 @require_POST
@@ -210,9 +247,35 @@ def create_exclusion_filter(request: HttpRequest, pk: int):
 
 
 @require_POST
+def create_valid_filter(request: HttpRequest, pk: int):
+    source = get_object_or_404(Source, pk=pk)
+    text = (request.POST.get("text") or "").strip()
+    nxt = (request.POST.get("next") or "").strip()
+    if text:
+        ValidFilter.objects.get_or_create(source=source, substring=text)
+        Finding.objects.filter(
+            source=source, finding__icontains=text
+        ).update(is_valid=True)
+    if nxt.startswith("/") and not nxt.startswith("//"):
+        return HttpResponseRedirect(nxt)
+    return HttpResponseRedirect(reverse("findings:source_detail", args=[source.pk]))
+
+
+@require_POST
 def delete_exclusion_filter(request: HttpRequest, pk: int, filter_pk: int):
     source = get_object_or_404(Source, pk=pk)
     flt = get_object_or_404(ExclusionFilter, pk=filter_pk, source=source)
+    flt.delete()
+    nxt = (request.POST.get("next") or "").strip()
+    if nxt.startswith("/") and not nxt.startswith("//"):
+        return HttpResponseRedirect(nxt)
+    return HttpResponseRedirect(reverse("findings:source_detail", args=[source.pk]))
+
+
+@require_POST
+def delete_valid_filter(request: HttpRequest, pk: int, filter_pk: int):
+    source = get_object_or_404(Source, pk=pk)
+    flt = get_object_or_404(ValidFilter, pk=filter_pk, source=source)
     flt.delete()
     nxt = (request.POST.get("next") or "").strip()
     if nxt.startswith("/") and not nxt.startswith("//"):
