@@ -44,12 +44,13 @@ class FindingAdmin(admin.ModelAdmin):
         "kind",
         "severity",
         "is_valid",
+        "not_valid",
         "plugin_name",
         "smb_host",
         "smb_share",
         "uri_count",
     )
-    list_filter = ("kind", "severity", "is_valid")
+    list_filter = ("kind", "severity", "is_valid", "not_valid")
     search_fields = ("finding", "uri_search")
     raw_id_fields = ("source",)
 

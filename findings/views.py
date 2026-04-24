@@ -91,6 +91,9 @@ def home(request: HttpRequest):
 def source_detail(request: HttpRequest, pk: int):
     source = get_object_or_404(Source, pk=pk)
     qs = source.findings.all()
+    show_not_valid = request.GET.get("show_not_valid") == "1"
+    if not show_not_valid:
+        qs = qs.filter(not_valid=False)
 
     kind = request.GET.get("kind")
     if kind:
@@ -148,6 +151,7 @@ def source_detail(request: HttpRequest, pk: int):
         "kind",
         "severity",
         "is_valid",
+        "not_valid",
         "plugin_name",
         "smb_host",
         "smb_share",
@@ -234,6 +238,7 @@ def source_detail(request: HttpRequest, pk: int):
             "valid_filters": valid_filters,
             "selected_exclude_ids": selected_exclude_ids,
             "selected_valid_exclude_ids": selected_valid_exclude_ids,
+            "show_not_valid": show_not_valid,
             "filter_query": _filter_query(request),
         },
     )
@@ -246,7 +251,16 @@ def export_valid_findings_json(request: HttpRequest, pk: int) -> JsonResponse:
     rows = (
         source.findings.filter(is_valid=True)
         .order_by("occurred_at", "id")
-        .values("kind", "severity", "plugin_name", "smb_host", "smb_share", "uris", "finding")
+        .values(
+            "kind",
+            "severity",
+            "plugin_name",
+            "smb_host",
+            "smb_share",
+            "uris",
+            "finding",
+            "not_valid",
+        )
     )
     data = [
         {
@@ -257,6 +271,7 @@ def export_valid_findings_json(request: HttpRequest, pk: int) -> JsonResponse:
             "share": r["smb_share"] or "",
             "uris": r["uris"] if r["uris"] is not None else [],
             "finding": r["finding"],
+            "not_valid": r["not_valid"],
         }
         for r in rows
     ]
@@ -280,6 +295,21 @@ def set_finding_is_valid(request: HttpRequest, pk: int, finding_pk: int):
     accept = request.META.get("HTTP_ACCEPT", "")
     if "application/json" in accept:
         return JsonResponse({"ok": True, "is_valid": finding.is_valid})
+    nxt = (request.POST.get("next") or "").strip()
+    if nxt.startswith("/") and not nxt.startswith("//"):
+        return HttpResponseRedirect(nxt)
+    return HttpResponseRedirect(reverse("findings:source_detail", args=[source.pk]))
+
+
+@require_POST
+def set_finding_not_valid(request: HttpRequest, pk: int, finding_pk: int):
+    source = get_object_or_404(Source, pk=pk)
+    finding = get_object_or_404(Finding, pk=finding_pk, source=source)
+    finding.not_valid = request.POST.get("not_valid") == "1"
+    finding.save(update_fields=["not_valid"])
+    accept = request.META.get("HTTP_ACCEPT", "")
+    if "application/json" in accept:
+        return JsonResponse({"ok": True, "not_valid": finding.not_valid})
     nxt = (request.POST.get("next") or "").strip()
     if nxt.startswith("/") and not nxt.startswith("//"):
         return HttpResponseRedirect(nxt)

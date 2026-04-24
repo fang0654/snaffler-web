@@ -37,6 +37,11 @@ urlpatterns = [
         views.set_finding_is_valid,
         name="set_finding_is_valid",
     ),
+    path(
+        "source/<int:pk>/finding/<int:finding_pk>/not-valid/",
+        views.set_finding_not_valid,
+        name="set_finding_not_valid",
+    ),
     path("credentials/smb/", views.smb_credentials, name="smb_credentials"),
     path("terminal/smb/", views.smb_terminal, name="smb_terminal"),
 ]

@@ -131,9 +131,9 @@
     padding: 0.45rem 0.75rem;
     font-size: 0.85rem;
   }
-  th.col-valid, td.col-valid { text-align: center; min-width: 3.25rem; }
+  th.col-valid, td.col-valid, th.col-not-valid, td.col-not-valid { text-align: center; min-width: 3.25rem; }
   .findings-table-wrap { overflow: auto; max-height: calc(100vh - 18rem); border: 1px solid var(--border); border-radius: 8px; }
-  table.data.resizable-cols { table-layout: fixed; }
+  /* default table column sizing stays automatic until JS locks width on first resize or saved layout */
   table.data.resizable-cols th.resizable-h {
     position: relative;
     padding-right: 0.75rem;
@@ -204,6 +204,13 @@
         <option value="100" {% if per_page == 100 %}selected{% endif %}>100</option>
         <option value="200" {% if per_page == 200 %}selected{% endif %}>200</option>
       </select>
+    </div>
+    <div class="field">
+      <label for="show_not_valid">View</label>
+      <label style="display:flex; align-items:center; gap:0.4rem; cursor:pointer; font-weight:normal; font-size:0.9rem; margin:0; margin-top:0.35rem;">
+        <input id="show_not_valid" type="checkbox" name="show_not_valid" value="1" {% if show_not_valid %}checked{% endif %}/>
+        Show not valid
+      </label>
     </div>
     <div class="field">
       <label>&nbsp;</label>
@@ -313,8 +320,9 @@
 </div>
 
 <div class="findings-table-wrap">
-  <table class="data resizable-cols" id="findings-table" data-source-pk="{{ source.pk }}">
+  <table class="data resizable-cols" id="findings-table" data-source-pk="{{ source.pk }}" data-show-not-valid="{% if show_not_valid %}1{% else %}0{% endif %}">
     <colgroup id="findings-cols">
+      <col>
       <col>
       <col>
       <col>
@@ -332,6 +340,9 @@
         </th>
         <th class="sort resizable-h col-valid">
           <a href="?{% sort_query request 'is_valid' %}">Valid{% if sort == 'is_valid' %}<span class="arrow">{% if order == 'desc' %}↓{% else %}↑{% endif %}</span>{% endif %}</a>
+        </th>
+        <th class="sort resizable-h col-not-valid">
+          <a href="?{% sort_query request 'not_valid' %}">Not valid{% if sort == 'not_valid' %}<span class="arrow">{% if order == 'desc' %}↓{% else %}↑{% endif %}</span>{% endif %}</a>
         </th>
         <th class="sort resizable-h">
           <a href="?{% sort_query request 'kind' %}">Type{% if sort == 'kind' %}<span class="arrow">{% if order == 'desc' %}↓{% else %}↑{% endif %}</span>{% endif %}</a>
@@ -361,6 +372,9 @@
           <td class="col-valid">
             <input type="checkbox" class="finding-is-valid" data-url="{% url 'findings:set_finding_is_valid' source.pk row.pk %}" {% if row.is_valid %}checked{% endif %} title="Valid" aria-label="Valid"/>
           </td>
+          <td class="col-not-valid">
+            <input type="checkbox" class="finding-not-valid" data-url="{% url 'findings:set_finding_not_valid' source.pk row.pk %}" {% if row.not_valid %}checked{% endif %} title="Not valid" aria-label="Not valid"/>
+          </td>
           <td class="kind">{{ row.kind }}</td>
           <td class="{% if row.severity %}sev-{{ row.severity }}{% else %}sev-empty{% endif %}">{% if row.severity %}{{ row.severity }}{% else %}—{% endif %}</td>
           <td class="kind">{% if row.plugin_name %}{{ row.plugin_name }}{% else %}—{% endif %}</td>
@@ -384,7 +398,7 @@
           <td class="finding">{{ row.finding }}</td>
         </tr>
       {% empty %}
-        <tr><td colspan="9" class="muted">No rows match.</td></tr>
+        <tr><td colspan="10" class="muted">No rows match.</td></tr>
       {% endfor %}
     </tbody>
   </table>
@@ -484,47 +498,81 @@
 })();
 
 (function () {
-  var table = document.querySelector("table.data");
+  var table = document.getElementById("findings-table");
   if (!table) return;
   var body = table.querySelector("tbody");
   if (!body) return;
   var csrfEl = document.querySelector("input[name=csrfmiddlewaretoken]");
   var csrf = csrfEl ? csrfEl.value : "";
   if (!csrf) return;
+  var showNotValid = table.getAttribute("data-show-not-valid") === "1";
 
   body.addEventListener("change", function (e) {
     var el = e.target;
-    if (!el || !el.classList || !el.classList.contains("finding-is-valid")) return;
-    var url = el.getAttribute("data-url");
-    if (!url) return;
-    var was = !el.checked;
-    var fd = new FormData();
-    fd.set("is_valid", el.checked ? "1" : "0");
-    el.disabled = true;
-    fetch(url, {
-      method: "POST",
-      body: fd,
-      credentials: "same-origin",
-      headers: {
-        Accept: "application/json",
-        "X-CSRFToken": csrf
-      }
-    })
-      .then(function (r) {
-        if (!r.ok) throw new Error("bad status");
-        return r.json();
+    if (!el || !el.classList) return;
+    if (el.classList.contains("finding-is-valid")) {
+      var url = el.getAttribute("data-url");
+      if (!url) return;
+      var wasV = !el.checked;
+      var fdV = new FormData();
+      fdV.set("is_valid", el.checked ? "1" : "0");
+      el.disabled = true;
+      fetch(url, {
+        method: "POST",
+        body: fdV,
+        credentials: "same-origin",
+        headers: { Accept: "application/json", "X-CSRFToken": csrf }
       })
-      .then(function (d) {
-        if (!d || !d.ok) throw new Error("bad body");
-        el.checked = !!d.is_valid;
+        .then(function (r) {
+          if (!r.ok) throw new Error("bad status");
+          return r.json();
+        })
+        .then(function (d) {
+          if (!d || !d.ok) throw new Error("bad body");
+          el.checked = !!d.is_valid;
+        })
+        .catch(function () {
+          el.checked = wasV;
+          alert("Could not save valid flag.");
+        })
+        .finally(function () {
+          el.disabled = false;
+        });
+      return;
+    }
+    if (el.classList.contains("finding-not-valid")) {
+      var urlN = el.getAttribute("data-url");
+      if (!urlN) return;
+      var wasN = !el.checked;
+      var tr = el.closest("tr");
+      var fdN = new FormData();
+      fdN.set("not_valid", el.checked ? "1" : "0");
+      el.disabled = true;
+      fetch(urlN, {
+        method: "POST",
+        body: fdN,
+        credentials: "same-origin",
+        headers: { Accept: "application/json", "X-CSRFToken": csrf }
       })
-      .catch(function () {
-        el.checked = was;
-        alert("Could not save valid flag.");
-      })
-      .finally(function () {
-        el.disabled = false;
-      });
+        .then(function (r) {
+          if (!r.ok) throw new Error("bad status");
+          return r.json();
+        })
+        .then(function (d) {
+          if (!d || !d.ok) throw new Error("bad body");
+          el.checked = !!d.not_valid;
+          if (d.not_valid && !showNotValid && tr && tr.parentNode) {
+            tr.parentNode.removeChild(tr);
+          }
+        })
+        .catch(function () {
+          el.checked = wasN;
+          alert("Could not save not valid flag.");
+        })
+        .finally(function () {
+          el.disabled = false;
+        });
+    }
   });
 })();
 
@@ -539,22 +587,52 @@
   var pk = table.getAttribute("data-source-pk") || "0";
   var storageKey = "snaffler:findingsTableCols:" + pk;
 
+  function isLayoutLocked() {
+    return table.getAttribute("data-col-layout-locked") === "1";
+  }
+  function lockTableLayout() {
+    table.setAttribute("data-col-layout-locked", "1");
+    table.style.tableLayout = "fixed";
+  }
+  function snapshotColumnWidthsFromHeaders() {
+    for (var c = 0; c < ths.length; c++) {
+      var w = ths[c].getBoundingClientRect().width;
+      if (w >= 1) cols[c].style.width = Math.floor(w) + "px";
+    }
+    lockTableLayout();
+  }
+
   function loadWidths() {
     try {
       var raw = localStorage.getItem(storageKey);
       if (!raw) return;
       var arr = JSON.parse(raw);
       if (!Array.isArray(arr) || arr.length !== cols.length) return;
+      var any = false;
       for (var i = 0; i < arr.length; i++) {
-        if (arr[i]) cols[i].style.width = arr[i];
+        if (arr[i]) {
+          cols[i].style.width = arr[i];
+          any = true;
+        }
       }
+      if (!any) return;
+      requestAnimationFrame(function () {
+        for (var j = 0; j < cols.length; j++) {
+          if (!cols[j].style.width) {
+            var w0 = ths[j].getBoundingClientRect().width;
+            if (w0 >= 1) cols[j].style.width = Math.floor(w0) + "px";
+          }
+        }
+        lockTableLayout();
+      });
     } catch (e) {}
   }
 
   function saveWidths() {
     var arr = [];
     for (var w = 0; w < cols.length; w++) {
-      arr.push(cols[w].style.width || "");
+      var px = cols[w].getBoundingClientRect().width;
+      arr.push(Math.floor(px) + "px");
     }
     try { localStorage.setItem(storageKey, JSON.stringify(arr)); } catch (e) {}
   }
@@ -563,10 +641,11 @@
     e.preventDefault();
     e.stopPropagation();
     if (e.button !== 0) return;
+    if (!isLayoutLocked()) snapshotColumnWidthsFromHeaders();
     var colEl = cols[colIndex];
     var startX = e.clientX;
     var startW = colEl.getBoundingClientRect().width;
-    var minW = colIndex === 1 ? 44 : 32;
+    var minW = colIndex === 1 || colIndex === 2 ? 44 : 32;
     function onMove(e2) {
       var dx = e2.clientX - startX;
       var nw = Math.max(minW, startW + dx);
