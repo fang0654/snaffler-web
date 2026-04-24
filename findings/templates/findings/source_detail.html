@@ -206,11 +206,17 @@
       </select>
     </div>
     <div class="field">
-      <label for="show_not_valid">View</label>
-      <label style="display:flex; align-items:center; gap:0.4rem; cursor:pointer; font-weight:normal; font-size:0.9rem; margin:0; margin-top:0.35rem;">
-        <input id="show_not_valid" type="checkbox" name="show_not_valid" value="1" {% if show_not_valid %}checked{% endif %}/>
-        Show not valid
-      </label>
+      <label>View</label>
+      <div style="display:flex; flex-direction:column; gap:0.3rem; margin-top:0.15rem; font-size:0.9rem;">
+        <label style="display:flex; align-items:center; gap:0.4rem; cursor:pointer; font-weight:normal; margin:0;">
+          <input id="show_valid" type="checkbox" name="show_valid" value="1" {% if show_valid %}checked{% endif %}/>
+          Show valid
+        </label>
+        <label style="display:flex; align-items:center; gap:0.4rem; cursor:pointer; font-weight:normal; margin:0;">
+          <input id="show_not_valid" type="checkbox" name="show_not_valid" value="1" {% if show_not_valid %}checked{% endif %}/>
+          Show not valid
+        </label>
+      </div>
     </div>
     <div class="field">
       <label>&nbsp;</label>
@@ -320,7 +326,7 @@
 </div>
 
 <div class="findings-table-wrap">
-  <table class="data resizable-cols" id="findings-table" data-source-pk="{{ source.pk }}" data-show-not-valid="{% if show_not_valid %}1{% else %}0{% endif %}">
+  <table class="data resizable-cols" id="findings-table" data-source-pk="{{ source.pk }}" data-list-strict="{% if not show_not_valid and not show_valid %}1{% else %}0{% endif %}">
     <colgroup id="findings-cols">
       <col>
       <col>
@@ -505,7 +511,7 @@
   var csrfEl = document.querySelector("input[name=csrfmiddlewaretoken]");
   var csrf = csrfEl ? csrfEl.value : "";
   if (!csrf) return;
-  var showNotValid = table.getAttribute("data-show-not-valid") === "1";
+  var listStrict = table.getAttribute("data-list-strict") === "1";
 
   body.addEventListener("change", function (e) {
     var el = e.target;
@@ -514,6 +520,7 @@
       var url = el.getAttribute("data-url");
       if (!url) return;
       var wasV = !el.checked;
+      var trV = el.closest("tr");
       var fdV = new FormData();
       fdV.set("is_valid", el.checked ? "1" : "0");
       el.disabled = true;
@@ -530,6 +537,9 @@
         .then(function (d) {
           if (!d || !d.ok) throw new Error("bad body");
           el.checked = !!d.is_valid;
+          if (d.is_valid && listStrict && trV && trV.parentNode) {
+            trV.parentNode.removeChild(trV);
+          }
         })
         .catch(function () {
           el.checked = wasV;
@@ -561,7 +571,7 @@
         .then(function (d) {
           if (!d || !d.ok) throw new Error("bad body");
           el.checked = !!d.not_valid;
-          if (d.not_valid && !showNotValid && tr && tr.parentNode) {
+          if (d.not_valid && listStrict && tr && tr.parentNode) {
             tr.parentNode.removeChild(tr);
           }
         })

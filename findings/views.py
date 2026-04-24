@@ -92,8 +92,16 @@ def source_detail(request: HttpRequest, pk: int):
     source = get_object_or_404(Source, pk=pk)
     qs = source.findings.all()
     show_not_valid = request.GET.get("show_not_valid") == "1"
-    if not show_not_valid:
-        qs = qs.filter(not_valid=False)
+    show_valid = request.GET.get("show_valid") == "1"
+    if not show_not_valid and not show_valid:
+        qs = qs.filter(is_valid=False, not_valid=False)
+    else:
+        visible = Q(is_valid=False, not_valid=False)
+        if show_not_valid:
+            visible |= Q(not_valid=True)
+        if show_valid:
+            visible |= Q(is_valid=True)
+        qs = qs.filter(visible)
 
     kind = request.GET.get("kind")
     if kind:
@@ -239,6 +247,7 @@ def source_detail(request: HttpRequest, pk: int):
             "selected_exclude_ids": selected_exclude_ids,
             "selected_valid_exclude_ids": selected_valid_exclude_ids,
             "show_not_valid": show_not_valid,
+            "show_valid": show_valid,
             "filter_query": _filter_query(request),
         },
     )
