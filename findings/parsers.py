@@ -73,7 +73,7 @@ def _is_iso_z(s: str) -> bool:
 def is_tsv_snaffler_head(first_lines: list[str]) -> bool:
     """True if the file looks like Snaffler TSV (computer\\tdatetime\\t[type]\\t…)."""
     for line in first_lines:
-        line = line.rstrip("\n\r")
+        line = _strip_bom(line.rstrip("\n\r"))
         if not line or line.lstrip().startswith("#"):
             continue
         parts = line.split("\t")
@@ -92,7 +92,7 @@ def is_tsv_snaffler_head(first_lines: list[str]) -> bool:
 def detect_tsv_user_prefix(first_lines: list[str]) -> str | None:
     """Prefix string including tab after the leading [user] block: ``[X]\\t``"""
     for line in first_lines:
-        line = line.rstrip("\n\r")
+        line = _strip_bom(line.rstrip("\n\r"))
         if not line or line.lstrip().startswith("#"):
             continue
         parts = line.split("\t")
@@ -109,18 +109,32 @@ def detect_tsv_user_prefix(first_lines: list[str]) -> str | None:
     return None
 
 
+def _strip_bom(s: str) -> str:
+    if s and s[0] == "\ufeff":
+        return s[1:]
+    return s
+
+
 def _tsv_finding_from_parts(parts: list[str]) -> str:
-    """Build finding text: ``<plugin|R>`` (columns 4–5) plus non-empty tail from column 6 onward."""
-    if len(parts) < 4:
+    """Build stored finding text from TSV column indices (see module docstring)."""
+    n = len(parts)
+    if n < 4:
         return "\t".join(parts)
-    # 0 computer, 1 datetime, 2 [type], 3 Severity, 4 plugin, 5 R, 6–8 often empty, 9+ = rest
-    plugin = parts[4] if len(parts) > 4 else ""
-    fifth = parts[5] if len(parts) > 5 else ""
-    head = f"<{plugin}|{fifth}>"
-    if len(parts) <= 6:
-        return head
-    # After the three placeholder columns (6–8), remaining tab fields are the finding body
-    rest = [s for s in parts[6:] if s]
+    # Short export: only four fields — the last cell is the whole finding (no per-column Severity/…)
+    if n == 4:
+        return parts[3]
+    # Five fields: computer, dt, [type], Severity, one blob
+    if n == 5:
+        return parts[4]
+    # Wide: 0..3 = computer,dt,[type],Severity — then plugin, R, (often three empties), then rest
+    plugin = (parts[4] if n > 4 else "") or ""
+    fifth = (parts[5] if n > 5 else "") or ""
+    rest = [s for s in (parts[6:] if n > 6 else []) if s]
+    if not plugin.strip() and not fifth.strip():
+        if rest:
+            return "\n".join(rest)
+        return ""
+    head = f"<{plugin.strip()}|{fifth.strip()}>"
     if not rest:
         return head
     return head + "\n" + "\n".join(rest)
@@ -129,8 +143,8 @@ def _tsv_finding_from_parts(parts: list[str]) -> str:
 def iter_tsv_rows(lines: Iterator[str], user_prefix: str) -> Iterator[Row]:
     """One Row per TSV line; ``user_prefix`` is ``computer\\t`` (see ``detect_tsv_user_prefix``)."""
     for raw in lines:
-        line = raw.rstrip("\n\r")
-        if not line or not line.startswith(user_prefix):
+        line = _strip_bom(raw.rstrip("\n\r"))
+        if not line or not line.startswith(_strip_bom(user_prefix)):
             continue
         parts = line.split("\t")
         if len(parts) < 4:
@@ -141,7 +155,11 @@ def iter_tsv_rows(lines: Iterator[str], user_prefix: str) -> Iterator[Row]:
         kind = parts[2].strip("[]")
         if _skip_line_kind(kind):
             continue
-        severity = parts[3] if len(parts) > 3 else ""
+        n = len(parts)
+        if n == 4:
+            severity = ""
+        else:
+            severity = parts[3] if n > 3 else ""
         finding = _tsv_finding_from_parts(parts)
         yield Row(dt=dt, kind=kind, severity=severity, finding=finding)
 
@@ -161,11 +179,12 @@ def parse_body(body: str) -> tuple[str, str, str]:
 
 
 def iter_rows(lines: Iterator[str], user_prefix: str) -> Iterator[Row]:
+    up = _strip_bom(user_prefix)
     for raw in lines:
-        line = raw.rstrip("\n\r")
-        if not line.startswith(user_prefix):
+        line = _strip_bom(raw.rstrip("\n\r"))
+        if not line.startswith(up):
             continue
-        rest = line[len(user_prefix) :]
+        rest = line[len(up) :]
         m = LINE_RE.match(rest)
         if not m:
             continue
@@ -182,9 +201,9 @@ def iter_text_lines(stream: TextIO | BinaryIO) -> Iterator[str]:
         if not raw:
             break
         if isinstance(raw, bytes):
-            yield raw.decode("utf-8", errors="replace")
+            yield _strip_bom(raw.decode("utf-8", errors="replace"))
         else:
-            yield raw
+            yield _strip_bom(raw)
 
 
 def read_head_lines(stream: TextIO | BinaryIO, n: int) -> list[str]:
@@ -194,9 +213,9 @@ def read_head_lines(stream: TextIO | BinaryIO, n: int) -> list[str]:
         if not raw:
             break
         if isinstance(raw, bytes):
-            out.append(raw.decode("utf-8", errors="replace"))
+            out.append(_strip_bom(raw.decode("utf-8", errors="replace")))
         else:
-            out.append(raw)
+            out.append(_strip_bom(raw))
     return out
 
 
