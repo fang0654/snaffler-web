@@ -7,8 +7,11 @@ from .plugin_extract import extract_plugin_name
 from .smb_parse import smb_fields_from_uris
 from .uri_extract import extract_uris
 from .parsers import (
+    detect_tsv_user_prefix,
     detect_user_prefix,
+    is_tsv_snaffler_head,
     iter_rows,
+    iter_tsv_rows,
     iter_text_lines,
     parse_dt,
     read_head_lines,
@@ -28,7 +31,12 @@ def import_snaffler_upload(uploaded_file) -> Source:
         raw.seek(0)
 
     head = read_head_lines(raw, 5000)
-    prefix = detect_user_prefix(head)
+    if is_tsv_snaffler_head(head):
+        prefix = detect_tsv_user_prefix(head)
+        row_iter = iter_tsv_rows
+    else:
+        prefix = detect_user_prefix(head)
+        row_iter = iter_rows
     if not prefix:
         raise ValueError("Could not detect Snaffler user prefix from file.")
 
@@ -44,7 +52,7 @@ def import_snaffler_upload(uploaded_file) -> Source:
         )
         batch: list[Finding] = []
         total = 0
-        for row in iter_rows(iter_text_lines(raw), prefix):
+        for row in row_iter(iter_text_lines(raw), prefix):
             uris = extract_uris(row.finding)
             smb_host, smb_share, smb_cd_path = smb_fields_from_uris(uris)
             plugin_name = extract_plugin_name(row.finding)

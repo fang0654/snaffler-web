@@ -5,7 +5,7 @@
 {% block content %}
 <div class="card">
   <h2 style="margin-top:0;">Import log</h2>
-  <p class="muted">Upload a Snaffler text log. Rows are parsed and stored in the database.</p>
+  <p class="muted">Upload a Snaffler text log or a tab-separated export with the same columns (leading <code>[context]</code> column and tab-delimited fields). Rows are parsed and stored in the database.</p>
   {% if error %}
     <div class="error">{{ error }}</div>
   {% endif %}
