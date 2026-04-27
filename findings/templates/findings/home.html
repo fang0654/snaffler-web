@@ -5,7 +5,7 @@
 {% block content %}
 <div class="card">
   <h2 style="margin-top:0;">Import log</h2>
-  <p class="muted">Upload a Snaffler text log or a tab-separated export with the same columns (leading <code>[context]</code> column and tab-delimited fields). Rows are parsed and stored in the database.</p>
+  <p class="muted">Upload a Snaffler text log, or a <strong>tab-separated</strong> file where each line is: computer (host) column, <code>YYYY-MM-DD HH:MM:SSZ</code>, <code>[Type]</code> (e.g. <code>[File]</code>), Severity, plugin name, <code>R</code>, then three tab-separated fields (usually empty), then the rest of the finding as further tab-separated values. <code>[Info]</code> and <code>[Error]</code> lines are not imported. Rows are stored in the database.</p>
   {% if error %}
     <div class="error">{{ error }}</div>
   {% endif %}

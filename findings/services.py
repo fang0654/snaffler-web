@@ -25,6 +25,10 @@ def import_snaffler_upload(uploaded_file) -> Source:
     """
     Parse an uploaded Snaffler log and persist rows in a transaction.
     `uploaded_file` is a Django UploadedFile.
+
+    Supports the usual space-separated log and TSV; see the module docstring on
+    ``findings.parsers`` for the tab-separated column order (computer, datetime,
+    type, Severity, plugin, R, then three often-empty fields, then the rest).
     """
     raw = uploaded_file.file
     if hasattr(raw, "seek"):
