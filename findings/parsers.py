@@ -20,7 +20,7 @@ import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import BinaryIO, Iterator, TextIO
-
+import pdb
 # After the user prefix: ISO datetime, bracket type, remainder.
 LINE_RE = re.compile(
     r"^(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}Z)\s+\[([^\]]+)\]\s+(.*)$"
@@ -117,6 +117,8 @@ def _strip_bom(s: str) -> str:
 
 def _tsv_finding_from_parts(parts: list[str]) -> str:
     """Build stored finding text from TSV column indices (see module docstring)."""
+    # if parts[2] == "[File]":
+    #     pdb.set_trace()
     n = len(parts)
     if n < 4:
         return "\t".join(parts)
@@ -137,7 +139,7 @@ def _tsv_finding_from_parts(parts: list[str]) -> str:
     head = f"<{plugin.strip()}|{fifth.strip()}>"
     if not rest:
         return head
-    return head + "\n" + "\n".join(rest)
+    return head + " " + " ".join(rest)
 
 
 def iter_tsv_rows(lines: Iterator[str], user_prefix: str) -> Iterator[Row]:
@@ -151,6 +153,7 @@ def iter_tsv_rows(lines: Iterator[str], user_prefix: str) -> Iterator[Row]:
             continue
         if not _is_iso_z(parts[1]):
             continue
+        
         dt = parts[1].strip()
         kind = parts[2].strip("[]")
         if _skip_line_kind(kind):
@@ -160,7 +163,10 @@ def iter_tsv_rows(lines: Iterator[str], user_prefix: str) -> Iterator[Row]:
             severity = ""
         else:
             severity = parts[3] if n > 3 else ""
+        
         finding = _tsv_finding_from_parts(parts)
+        if  not severity:
+            continue
         yield Row(dt=dt, kind=kind, severity=severity, finding=finding)
 
 
