@@ -13,6 +13,13 @@ LINE_RE = re.compile(
 )
 STRUCTURED_RE = re.compile(r"^\{(\w+)\}<([^>]*)>(.*)$", re.DOTALL)
 
+# Snaffler [Info] / [Error] lines are status messages, not file findings — skip on import
+_SKIPPED_LINE_KINDS = frozenset({"info", "error"})
+
+
+def _skip_line_kind(kind: str) -> bool:
+    return kind.strip().casefold() in _SKIPPED_LINE_KINDS
+
 
 @dataclass
 class Row:
@@ -118,6 +125,8 @@ def iter_tsv_rows(lines: Iterator[str], user_prefix: str) -> Iterator[Row]:
             continue
         dt = parts[1].strip()
         kind = parts[2].strip("[]")
+        if _skip_line_kind(kind):
+            continue
         severity = parts[3] if len(parts) > 3 else ""
         finding = _tsv_finding_from_parts(parts)
         yield Row(dt=dt, kind=kind, severity=severity, finding=finding)
@@ -147,6 +156,8 @@ def iter_rows(lines: Iterator[str], user_prefix: str) -> Iterator[Row]:
         if not m:
             continue
         dt, kind, body = m.group(1), m.group(2), m.group(3)
+        if _skip_line_kind(kind):
+            continue
         severity, finding, _ = parse_body(body)
         yield Row(dt=dt, kind=kind, severity=severity, finding=finding)
 
