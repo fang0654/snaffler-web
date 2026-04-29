@@ -166,7 +166,7 @@ def iter_tsv_rows(lines: Iterator[str], user_prefix: str) -> Iterator[Row]:
         
         finding = _tsv_finding_from_parts(parts)
         if  not severity:
-            continue
+            continue 
         yield Row(dt=dt, kind=kind, severity=severity, finding=finding)
 
 

@@ -26,8 +26,8 @@ _UNC_PARENS_OPEN = re.compile(r"\(\s*((?:\\){2})")
 # opening < then \\
 _UNC_ANGLE_OPEN = re.compile(r"<((?:\\){2})")
 
-# Any \\ that starts a host-like segment (standalone UNC)
-_UNC_DOUBLE = re.compile(r"(?:\\){2}[\w.-]+")
+# Standalone UNC: ``\\hostname\`` minimal prefix (regex ``^pass\\.txt`` is not a UNC opener).
+_UNC_LEGIT_START = re.compile(r"(?:\\){2}[^\\/]+\\")
 
 
 def _strip_url_tail_for_path_check(s: str) -> str:
@@ -55,16 +55,26 @@ def _seg_from_scheme_url(url_sofar: str) -> str:
 
 def _http_or_scheme_path_terminal_complete(url_sofar: str) -> bool:
     seg = _seg_from_scheme_url(url_sofar)
-    return bool(seg and _looks_like_filename(seg))
+    return bool(
+        seg
+        and "." in seg
+        and _looks_like_filename(seg)
+        and seg.rsplit(".", 1)[-1].isalnum()
+    )
 
 
 def _unc_terminal_complete(unc_sofar: str) -> bool:
-    r"""UNC body; last backslash segment should look like ``file.ext``."""
+    r"""UNC body; last segment must look like a real file (not regex tail like ``*.txt\$``)."""
     s = unc_sofar.rstrip("\\")
     if not s or "\\" not in s:
         return False
     seg = s.split("\\")[-1]
-    return bool(seg and _looks_like_filename(seg))
+    if not seg or "." not in seg or seg.startswith("."):
+        return False
+    _base, ext = seg.rsplit(".", 1)
+    if not (1 <= len(ext) <= 8 and len(_base) > 0):
+        return False
+    return ext.isalnum()
 
 
 def _expand_scheme_rest(text: str, start_scheme: int, scheme_m: re.Match[str]) -> str:
@@ -201,7 +211,7 @@ def _collect_unc_angle(text: str) -> list[tuple[int, str, str]]:
 
 def _collect_unc_standalone(text: str) -> list[tuple[int, str, str]]:
     out: list[tuple[int, str, str]] = []
-    for m in _UNC_DOUBLE.finditer(text):
+    for m in _UNC_LEGIT_START.finditer(text):
         start = m.start()
         body = _expand_unc_body(text, start, angle_bracket=False)
         s = _trim_trailing(body)
